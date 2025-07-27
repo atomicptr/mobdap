@@ -1,0 +1,10 @@
+(defproject mobdap "0.1.0"
+  :description "Debug Adapter for MobDap"
+  :url "https://github.com/atomicptr/mobdap"
+  :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
+  :dependencies [[org.clojure/clojure "1.12.1"]]
+  :main ^:skip-aot mobdap.main
+  :omit-source true
+  :target-path "target/%s"
+  :profiles {:uberjar {:aot :all
+                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
