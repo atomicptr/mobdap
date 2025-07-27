@@ -2,9 +2,14 @@
   :description "Debug Adapter for MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
-  :dependencies [[org.clojure/clojure "1.12.1"]]
+  :dependencies [[org.clojure/clojure             "1.12.1"]]
+  :plugins      [[io.taylorwood/lein-native-image "0.3.1"]]
   :main ^:skip-aot mobdap.main
   :omit-source true
   :target-path "target/%s"
+  :native-image {:opts ["--verbose"
+                        "--report-unsupported-elements-at-runtime"
+                        "--initialize-at-build-time"]}
   :profiles {:uberjar {:aot :all
-                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
+                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
+             :native-image {:jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})

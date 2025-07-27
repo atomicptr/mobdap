@@ -1,5 +1,6 @@
 /.clj-kondo
 /.lsp
+/reports
 
 # Created by https://www.toptal.com/developers/gitignore/api/windows,macos,linux,clojure,java,node
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,macos,linux,clojure,java,node
