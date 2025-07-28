@@ -2,7 +2,10 @@
   :description "Debug Adapter for MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
-  :dependencies [[org.clojure/clojure             "1.12.1"]]
+  :dependencies [[cheshire/cheshire               "6.0.0"]
+                 [com.taoensso/timbre             "6.7.1"]
+                 [org.clojure/clojure             "1.12.1"]
+                 [org.clojure/core.async          "1.8.741"]]
   :plugins      [[io.taylorwood/lein-native-image "0.3.1"]]
   :main ^:skip-aot mobdap.main
   :omit-source true
