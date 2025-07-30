@@ -4,11 +4,13 @@
    [clj-stacktrace.repl :refer [pst-str]]
    [clojure.core.async :refer [<!! >!! chan go-loop thread]]
    [clojure.string :as string]
+   [mobdap.lua :as lua]
    [taoensso.timbre :as log])
   (:import
    [java.io BufferedReader InputStreamReader PrintWriter]
    [java.net ServerSocket]))
 
+(def ^:private response-pattern-200 #"^200 OK\s+(.+)")
 (def ^:private response-pattern-202 #"^202 Paused\s+(.+)\s+([0-9]+)\s*$")
 (def ^:private response-pattern-203 #"^203 Paused\s+(.+)\s+([0-9]+)\s+([0-9]+)\s*$")
 (def ^:private response-pattern-204 #"^204 Output (\w+) (\d+)$")
@@ -36,14 +38,19 @@
       (loop []
         (let [breakpoint (read-response! server)]
           (if-not breakpoint
-            (log/info "Program finished")
-            (let [[_ status] (re-find #"^(\d+)" breakpoint)]
+            (do (log/info "Program finished")
+                (.close (get-in server [:client :socket]))
+                (System/exit 0))
+            (let [[_ status] (re-find #"^(\d+)" breakpoint)
+                  to-adapter (get-in server [:channels :to-adapter])]
               (case status
                 "200" (recur)
                 "202" (if-let [[_ file line] (re-find response-pattern-202 breakpoint)]
                         (do (log/info "Paused at file:" file "line:" line)
-                            ; TODO: we hit breakpoint here, tell editor about it
-                            ; TODO: this is also blocking which shouldnt be the case
+                            (>!! to-adapter {:cmd           :stopped
+                                             :type          :breakpoint
+                                             :breakpoint    {:file file
+                                                             :line line}})
                             nil)
                         (recur))
                 "203" (if-let [[_ file line watch-index] (re-find response-pattern-203 breakpoint)]
@@ -66,8 +73,19 @@
                     nil)))))))))
 
 (defn send-command-setb! [server file line]
-  (send-line! server (format "SETB %s %d" file line))
-  (read-response! server)) ; TODO: actually handle response
+  (send-line! server (format "SETB %s %d" file line)))
+
+(defn send-command-stack! [server]
+  (send-line! server "STACK")
+  (if-let [[_ stack-code] (re-find response-pattern-200 (read-response! server))]
+    (lua/extract-table stack-code)
+    nil))
+
+; TODO: this doesnt actually work
+(defn is-connected? [socket]
+  (and (not (.isClosed socket))
+       (.isConnected socket)
+       (not (.isOutputShutdown socket))))
 
 (defn run-server! [port to-adapter]
   (let [to-debug-server (chan)]
@@ -96,9 +114,14 @@
                 (case (:cmd command)
                   :run             (send-command! server-handle "run")
 
+                  ; TODO: delete all prior breakpoints by using "LISTB" -> "DELB"
                   :set-breakpoints (doseq [[filename breakpoints] (:breakpoints command)
                                            {:keys [line]} breakpoints]
                                      (send-command-setb! server-handle filename line))
+
+                  :stacktrace      (let [stack (send-command-stack! server-handle)]
+                                     (log/info "STACK TRACE GOT:" stack)
+                                     (>!! to-adapter {:cmd :stacktrace :stack stack :seq (:seq command)}))
 
                   :exit            (do
                                      (send-command! server-handle "exit")
@@ -109,7 +132,8 @@
                 (recur)))
 
             (loop []
-              (when (not (.isConnected client))
+              ; TODO: this actually doesnt work but we should shut down mobdap when client is gone
+              (when (not (is-connected? client))
                 (log/info "Lost connection to client, exitting...")
                 (System/exit 0))
               (recur)))
