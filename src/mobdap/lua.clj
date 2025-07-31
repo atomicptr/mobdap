@@ -1,6 +1,5 @@
 (ns mobdap.lua
   (:require
-   [cheshire.core :as json]
    [clj-stacktrace.core :refer [parse-exception]]
    [clj-stacktrace.repl :refer [pst-str]]
    [clojure.string :as string]

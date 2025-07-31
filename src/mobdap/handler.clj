@@ -10,14 +10,17 @@
 
 (def ^:private go-handler (atom nil))
 (def ^:private breakpoint-id-counter (atom 1))
+(def ^:private stackframe-id-counter (atom 1))
+(def ^:private vars-id-counter (atom 1))
 
 (defn- create-handler [adapter]
   {:adapter adapter
    :debug-server nil
-   :root-dir nil
-   :breakpoints {}
-   :channels {:to-handler (chan)
-              :to-debug-server nil}})
+   :root-dir     nil
+   :breakpoints  {}
+   :channels     {:to-handler (chan)
+                  :to-debug-server nil}
+   :stackframes  (atom {})})
 
 (defn- to-int [value]
   (if (int? value)
@@ -104,7 +107,7 @@
 
 (defn- transform-stack-trace [handler stack-trace]
   (map-indexed
-   (fn [idx [frame-info _ _]]
+   (fn [_ [frame-info stack upvalues]]
      (case (count frame-info)
        ; example of the frame header (6):
        ;   0: "modules/tbl.lua"   - path for the function
@@ -113,11 +116,16 @@
        ;   3: "Lua"               - Lua (thats where it comes from ig)
        ;   4: "field"             - ??? this can also be "upvalue"
        ;   5: "modules/tbl.lua"   - file location again
-       6 {:id (inc idx)
+       6 {:id (swap! stackframe-id-counter inc)
           :name ""
           :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 0)))}
           :line (frame-info 2)
-          :column 0}
+          :column 0
+          :extras {:scope-start (frame-info 1)
+                   :stack       {:id     (swap! vars-id-counter inc)
+                                 :values stack}
+                   :upvalues    {:id     (swap! vars-id-counter inc)
+                                 :values upvalues}}}
 
        ; example of the frame header:
        ;   0: "contains"          - name of the function
@@ -127,11 +135,16 @@
        ;   4: "Lua"               - Lua (thats where it comes from ig)
        ;   5: "field"             - ??? this can also be "upvalue"
        ;   6: "modules/tbl.lua"   - file location again
-       7 {:id (inc idx)
+       7 {:id (swap! stackframe-id-counter inc)
           :name (or (frame-info 0) "")
           :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 1)))}
           :line (frame-info 3)
-          :column 0}
+          :column 0
+          :extras {:scope-start (frame-info 2)
+                   :stack       {:id     (swap! vars-id-counter inc)
+                                 :values stack}
+                   :upvalues    {:id     (swap! vars-id-counter inc)
+                                 :values upvalues}}}
 
        (do (log/error "Could not transform stack trace" frame-info)
            nil)))
@@ -159,7 +172,8 @@
                       stack (:stack command)
                       stack (transform-stack-trace handler stack)]
                   (log/info "Stacktrace Result" stack)
-                  (adapter/send-message! (:adapter handler) (success seq "stackTrace" {:stackFrames stack
+                  (reset! (:stackframes handler) stack)
+                  (adapter/send-message! (:adapter handler) (success seq "stackTrace" {:stackFrames (map #(dissoc % :extras) stack)
                                                                                        :totalFrames (count stack)})))
 
     (log/error "Unknown server command:" (:cmd command))))
@@ -224,13 +238,37 @@
 
 (defn handle-stacktrace [handler message]
   (let [to-debug-server (get-in handler [:channels :to-debug-server])
-        to-handler      (get-in handler [:channels :to-handler])
         start-frame (get-in message [:arguments :startFrame])
         levels      (get-in message [:arguments :levels])]
 
     (>!! to-debug-server {:cmd :stacktrace :start start-frame :length levels :seq (:seq message)})
 
     handler))
+
+(defn- create-scope [frame vars name hint]
+  (let [id     (:id vars)
+        values (:values vars)]
+    (when (not-empty values)
+      {:name name
+       :presentationHint hint
+       :variablesReference id
+       :namedVariables (count values)
+       :indexedVariables 0
+       :expensive false
+       :source (get-in frame [:source])
+       :line (get-in frame [:extras :scope-start])})))
+
+(defn handle-scopes [handler message]
+  (let [frame-id     (get-in message [:arguments :frameId])
+        frame        (first (filter #(= (:id %) frame-id) @(:stackframes handler)))
+        stack-scope  (create-scope frame (get-in frame [:extras :stack]) "Stack" "locals")
+        upvals-scope (create-scope frame (get-in frame [:extras :upvalues]) "Upvalues" "registers")]
+    (adapter/send-message!
+     (:adapter handler)
+     (success (:seq message)
+              "scopes"
+              {:scopes (filter some? [stack-scope upvals-scope])})))
+  handler)
 
 (defn handle-terminate [handler message]
   (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
@@ -249,6 +287,7 @@
     "configurationDone" (handle-configuration-done handler message)
     "threads"           (handle-threads handler message)
     "stackTrace"        (handle-stacktrace handler message)
+    "scopes"            (handle-scopes handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 
