@@ -1,29 +1,66 @@
 (ns mobdap.lua
-  (:import [org.luaj.vm2 LuaValue]
-           [org.luaj.vm2.lib.jse JsePlatform]))
+  (:require
+   [cheshire.core :as json]
+   [clj-stacktrace.core :refer [parse-exception]]
+   [clj-stacktrace.repl :refer [pst-str]]
+   [clojure.string :as string]
+   [taoensso.timbre :as log])
+  (:import
+   [org.luaj.vm2 LuaTable]
+   [org.luaj.vm2.lib.jse JsePlatform]))
 
-(defn- lua-to-clojure [lua-value]
+(declare lua->clojure)
+
+(defn- is-array? [^LuaTable table]
+  (every? #(.isint %) (.keys table)))
+
+(defn- reference? [value]
+  (when (.isstring value)
+    (re-matches #"(table|function|Script): 0x[a-z0-9]+" (str (.tostring value)))))
+
+(defn- table->array [^LuaTable table]
+  (let [keys (.keys table)]
+    (if (and (= (.length table) 2) (reference? (.get table (last keys))))
+      (lua->clojure (.get table (first keys)))
+      (vec (map #(lua->clojure (.get table %)) keys)))))
+
+(defn- table->map [^LuaTable table]
+  (let [keys (.keys table)]
+    (into {}
+          (for [k keys]
+            [(keyword (str k))
+             (lua->clojure (.get table k))]))))
+
+(defn- lua->clojure [value]
   (cond
-    (.istable lua-value)
-    (let [keys (.keys lua-value)
-          numeric? (every? #(.isnumber %) keys)]
-      (if numeric?
-        (mapv (fn [i] (lua-to-clojure (.get lua-value (LuaValue/valueOf i))))
-              (sort (map #(.toint %) keys)))
-        (into {}
-              (for [k keys
-                    :let [v (.get lua-value k)]
-                    :when (not (or (.isfunction v) (.isclosure v) (.isuserdata v)
-                                   (and (.isstring v) (re-matches #"^(table|function|Script): 0x[0-9a-f]+" (.tojstring v)))))]
-                [(lua-to-clojure k) (lua-to-clojure v)]))))
-    (.isstring lua-value) (.tojstring lua-value)
-    (.isnumber lua-value) (.todouble lua-value)
-    (.isboolean lua-value) (.toboolean lua-value)
-    (.isnil lua-value) nil
-    :else nil))
+    (nil? value) nil
+
+    (.isstring value)
+    (let [s (.tojstring value)]
+      (if-let [r (reference? value)]
+        (keyword (string/lower-case (last r)))
+        (try
+          (Integer/parseInt s)
+          (catch NumberFormatException _ s))))
+
+    (.isnumber value) (.todouble value)
+    (.isboolean value) (.toboolean value)
+
+    (.istable value)
+    (if (is-array? value)
+      (table->array value)
+      (table->map value))
+
+    (instance? org.luaj.vm2.LuaFunction value)
+    :function))
 
 (defn extract-table [lua-code]
-  (let [globals (JsePlatform/standardGlobals)
-        chunk (.load globals lua-code)]
-    (-> (.call chunk)
-        (lua-to-clojure))))
+  (try
+    (let [globals (JsePlatform/standardGlobals)
+          chunk (.load globals lua-code)]
+      (-> (.call chunk)
+          (lua->clojure)))
+    (catch Throwable t
+      (log/error "Lua Bridge:" (pst-str (parse-exception t)))
+      [])))
+

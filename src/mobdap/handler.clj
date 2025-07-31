@@ -2,7 +2,7 @@
   (:require
    [clj-stacktrace.core :refer [parse-exception]]
    [clj-stacktrace.repl :refer [pst-str]]
-   [clojure.core.async :refer [<!! >! >!! alts!! chan go-loop]]
+   [clojure.core.async :refer [<!! >!! chan go-loop]]
    [clojure.java.io :as io]
    [mobdap.adapter :as adapter]
    [mobdap.debug-server :as debug-server]
@@ -35,17 +35,6 @@
          (filter #(= (to-int line) (:line %)))
          first
          :id)))
-
-(defn- wait-for-command [ch cmd]
-  (go-loop []
-    (let [[command _] (alts!! [[ch]])]
-      (log/info "WAIT FOR COMMAND:" command "SAME AS" cmd)
-      (if (= cmd (:cmd command))
-        command
-        (do
-          ; put command back if it doesnt match
-          (>! ch command)
-          (recur))))))
 
 (defn- response [success seq command body]
   {:type "response"
@@ -113,15 +102,39 @@
     (adapter/send-message! (:adapter handler) response)
     handler))
 
-; TODO: this probably still kinda sucks
-(defn- transform-stack-trace [stack-trace]
+(defn- transform-stack-trace [handler stack-trace]
   (map-indexed
    (fn [idx [frame-info _ _]]
-     {:id (inc idx)
-      :name (first frame-info)
-      :source {:name (frame-info 1)}
-      :line (parse-long (frame-info 2))
-      :column (parse-long (frame-info 3))})
+     (case (count frame-info)
+       ; example of the frame header (6):
+       ;   0: "modules/tbl.lua"   - path for the function
+       ;   1: 6                   - line where function gets declared
+       ;   2: 13                  - breakpoint? entry point?
+       ;   3: "Lua"               - Lua (thats where it comes from ig)
+       ;   4: "field"             - ??? this can also be "upvalue"
+       ;   5: "modules/tbl.lua"   - file location again
+       6 {:id (inc idx)
+          :name ""
+          :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 0)))}
+          :line (frame-info 2)
+          :column 0}
+
+       ; example of the frame header:
+       ;   0: "contains"          - name of the function
+       ;   1: "modules/tbl.lua"   - path for the function
+       ;   2: 6                   - line where function gets declared
+       ;   3: 13                  - breakpoint? entry point?
+       ;   4: "Lua"               - Lua (thats where it comes from ig)
+       ;   5: "field"             - ??? this can also be "upvalue"
+       ;   6: "modules/tbl.lua"   - file location again
+       7 {:id (inc idx)
+          :name (or (frame-info 0) "")
+          :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 1)))}
+          :line (frame-info 3)
+          :column 0}
+
+       (do (log/error "Could not transform stack trace" frame-info)
+           nil)))
    stack-trace))
 
 (defn- handle-debug-server-command [handler command]
@@ -144,7 +157,7 @@
 
     :stacktrace (let [seq   (:seq   command)
                       stack (:stack command)
-                      stack (transform-stack-trace stack)]
+                      stack (transform-stack-trace handler stack)]
                   (log/info "Stacktrace Result" stack)
                   (adapter/send-message! (:adapter handler) (success seq "stackTrace" {:stackFrames stack
                                                                                        :totalFrames (count stack)})))
