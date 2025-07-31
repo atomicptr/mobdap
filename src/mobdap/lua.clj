@@ -2,7 +2,6 @@
   (:require
    [clj-stacktrace.core :refer [parse-exception]]
    [clj-stacktrace.repl :refer [pst-str]]
-   [clojure.string :as string]
    [taoensso.timbre :as log])
   (:import
    [org.luaj.vm2 LuaTable]
@@ -13,15 +12,9 @@
 (defn- is-array? [^LuaTable table]
   (every? #(.isint %) (.keys table)))
 
-(defn- reference? [value]
-  (when (.isstring value)
-    (re-matches #"(table|function|Script): 0x[a-z0-9]+" (str (.tostring value)))))
-
 (defn- table->array [^LuaTable table]
   (let [keys (.keys table)]
-    (if (and (= (.length table) 2) (reference? (.get table (last keys))))
-      (lua->clojure (.get table (first keys)))
-      (vec (map #(lua->clojure (.get table %)) keys)))))
+    (vec (map #(lua->clojure (.get table %)) keys))))
 
 (defn- table->map [^LuaTable table]
   (let [keys (.keys table)]
@@ -34,13 +27,7 @@
   (cond
     (nil? value) nil
 
-    (.isstring value)
-    (let [s (.tojstring value)]
-      (if-let [r (reference? value)]
-        (keyword (string/lower-case (last r)))
-        (try
-          (Integer/parseInt s)
-          (catch NumberFormatException _ s))))
+    (.isstring value) (.tojstring value)
 
     (.isnumber value) (.todouble value)
     (.isboolean value) (.toboolean value)

@@ -4,6 +4,7 @@
    [clj-stacktrace.repl :refer [pst-str]]
    [clojure.core.async :refer [<!! >!! chan go-loop]]
    [clojure.java.io :as io]
+   [clojure.string :as string]
    [mobdap.adapter :as adapter]
    [mobdap.debug-server :as debug-server]
    [taoensso.timbre :as log]))
@@ -12,6 +13,7 @@
 (def ^:private breakpoint-id-counter (atom 1))
 (def ^:private stackframe-id-counter (atom 1))
 (def ^:private vars-id-counter (atom 1))
+(def ^:private var-index (atom {}))
 
 (defn- create-handler [adapter]
   {:adapter adapter
@@ -20,7 +22,7 @@
    :breakpoints  {}
    :channels     {:to-handler (chan)
                   :to-debug-server nil}
-   :stackframes  (atom {})})
+   :stackframes  (atom [])})
 
 (defn- to-int [value]
   (if (int? value)
@@ -105,49 +107,87 @@
     (adapter/send-message! (:adapter handler) response)
     handler))
 
+(defn- map-over-map [fun m]
+  (reduce-kv (fn [m k v] (assoc m k (fun k v))) {} m))
+
+(defn- parse-heap-value [ident]
+  (when-let [[_ type addr] (re-find #"(.+):\s*(0x[A-Za-z0-9]+)" ident)]
+    {:type (keyword type)
+     :addr addr}))
+
+(defn- parse-value [_ packed-value]
+  (case (count packed-value)
+    1 {:id   (swap! vars-id-counter inc)
+       :type :constant
+       :value nil}
+    2 (let [[value ident] packed-value]
+        (if-let [{type :type addr :addr} (parse-heap-value ident)]
+          {:id   (swap! vars-id-counter inc)
+           :type type
+           :addr addr
+           :value value}
+          {:id   (swap! vars-id-counter inc)
+           :type :constant
+           :value value}))
+    (do (log/error "Could not unpack" packed-value)
+        nil)))
+
 (defn- transform-stack-trace [handler stack-trace]
   (map-indexed
    (fn [_ [frame-info stack upvalues]]
-     (case (count frame-info)
-       ; example of the frame header (6):
-       ;   0: "modules/tbl.lua"   - path for the function
-       ;   1: 6                   - line where function gets declared
-       ;   2: 13                  - breakpoint? entry point?
-       ;   3: "Lua"               - Lua (thats where it comes from ig)
-       ;   4: "field"             - ??? this can also be "upvalue"
-       ;   5: "modules/tbl.lua"   - file location again
-       6 {:id (swap! stackframe-id-counter inc)
-          :name ""
-          :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 0)))}
-          :line (frame-info 2)
-          :column 0
-          :extras {:scope-start (frame-info 1)
-                   :stack       {:id     (swap! vars-id-counter inc)
-                                 :values stack}
-                   :upvalues    {:id     (swap! vars-id-counter inc)
-                                 :values upvalues}}}
+     (let [stack    (map-over-map parse-value stack)
+           upvalues (map-over-map parse-value upvalues)]
 
-       ; example of the frame header:
-       ;   0: "contains"          - name of the function
-       ;   1: "modules/tbl.lua"   - path for the function
-       ;   2: 6                   - line where function gets declared
-       ;   3: 13                  - breakpoint? entry point?
-       ;   4: "Lua"               - Lua (thats where it comes from ig)
-       ;   5: "field"             - ??? this can also be "upvalue"
-       ;   6: "modules/tbl.lua"   - file location again
-       7 {:id (swap! stackframe-id-counter inc)
-          :name (or (frame-info 0) "")
-          :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 1)))}
-          :line (frame-info 3)
-          :column 0
-          :extras {:scope-start (frame-info 2)
-                   :stack       {:id     (swap! vars-id-counter inc)
-                                 :values stack}
-                   :upvalues    {:id     (swap! vars-id-counter inc)
-                                 :values upvalues}}}
+       ; register vars from stack
+       (doseq [[k v] stack]
+         (swap! var-index assoc k v))
 
-       (do (log/error "Could not transform stack trace" frame-info)
-           nil)))
+       ; register vars from upvalues
+       (doseq [[k v] upvalues]
+         (swap! var-index assoc k v))
+
+       (case (count frame-info)
+         ; example of the frame header (6):
+         ;   0: "modules/tbl.lua"   - path for the function
+         ;   1: 6                   - line where function gets declared
+         ;   2: 13                  - breakpoint? entry point?
+         ;   3: "Lua"               - Lua (thats where it comes from ig)
+         ;   4: "field"             - ??? this can also be "upvalue"
+         ;   5: "modules/tbl.lua"   - file location again
+         6 {:id (swap! stackframe-id-counter inc)
+            :name ""
+            :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 0)))}
+            :line (parse-long (frame-info 2))
+            :column 0
+            :extras {:scope-start (parse-long (frame-info 1))
+                     :stack       {:id     (swap! vars-id-counter inc)
+                                   :values stack}
+                     :upvalues    {:id     (swap! vars-id-counter inc)
+                                   :values upvalues}
+                     :type        (frame-info 4)}}
+
+         ; example of the frame header:
+         ;   0: "contains"          - name of the function
+         ;   1: "modules/tbl.lua"   - path for the function
+         ;   2: 6                   - line where function gets declared
+         ;   3: 13                  - breakpoint? entry point?
+         ;   4: "Lua"               - Lua (thats where it comes from ig)
+         ;   5: "field"             - ??? this can also be "upvalue"
+         ;   6: "modules/tbl.lua"   - file location again
+         7 {:id (swap! stackframe-id-counter inc)
+            :name (or (frame-info 0) "")
+            :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 1)))}
+            :line (parse-long (frame-info 3))
+            :column 0
+            :extras {:scope-start (parse-long (frame-info 2))
+                     :stack       {:id     (swap! vars-id-counter inc)
+                                   :values stack}
+                     :upvalues    {:id     (swap! vars-id-counter inc)
+                                   :values upvalues}
+                     :type        (frame-info 5)}}
+
+         (do (log/error "Could not transform stack trace" frame-info)
+             nil))))
    stack-trace))
 
 (defn- handle-debug-server-command [handler command]
@@ -267,8 +307,69 @@
      (:adapter handler)
      (success (:seq message)
               "scopes"
-              {:scopes (filter some? [stack-scope upvals-scope])})))
-  handler)
+              {:scopes (filter some? [stack-scope upvals-scope])}))
+    handler))
+
+(defn- find-vars-scope-by-id [data id]
+  (some
+   (fn [m]
+     (or (when (= id (get-in m [:extras :stack :id]))
+           (get-in m [:extras :stack]))
+         (when (= id (get-in m [:extras :upvalues :id]))
+           (get-in m [:extras :upvalues]))))
+   data))
+
+(defn- table-remove-types-not-to-be-shown [table]
+  (filter #(not (#{:function} (second %))) table))
+
+(defn- create-variables [vars]
+  (map
+   (fn [[k v]]
+     (case (:type v)
+       :constant {:name (name k)
+                  :value (:value v)
+                  :type (cond
+                          (string? (:value v)) "string"
+                          (number? (:value v)) "number"
+                          :else nil)
+                  :evaluateName (name k)
+                  :variablesReference (:id v)
+                  :namedVariables 0
+                  :indexedVariables 0
+                  :presentationHint {:kind "data"
+                                     :attributes ["constant"]}}
+       :table    {:name (name k)
+                  :value
+                  (if (vector? (:value v))
+                    (format
+                     "[ %s ]"
+                     (string/join ", " (:value v)))
+                    (format
+                     "{ %s }"
+                     (string/join ", " (map (fn [[k v]] (str (name k) " = " v)) (table-remove-types-not-to-be-shown (:value v))))))
+                  :type
+                  (if (vector? (:value v)) "array" "object")
+                  :evaluateName (name k)
+                  :variablesReference (:id v)
+                  :namedVariables   (if (map?    (:value v)) (count (table-remove-types-not-to-be-shown (:value v))) 0)
+                  :indexedVariables (if (vector? (:value v)) (count (:value v))                0)
+                  :presentationHint {:kind "data"
+                                     :attributes (if (vector? (:value v)) "array" "rawObject")}}
+       :function  nil
+       (do (log/error "Unknown variable type:" (:type v) v)
+           nil)))
+   vars))
+
+(defn handle-variables [handler message]
+  (let [vars-id (get-in message [:arguments :variablesReference])
+        vars    (or (:values (find-vars-scope-by-id @(:stackframes handler) vars-id))
+                    (var-index vars-id))]
+    (adapter/send-message!
+     (:adapter handler)
+     (success (:seq message)
+              "variables"
+              {:variables (filter some? (create-variables vars))}))
+    handler))
 
 (defn handle-terminate [handler message]
   (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
@@ -288,6 +389,7 @@
     "threads"           (handle-threads handler message)
     "stackTrace"        (handle-stacktrace handler message)
     "scopes"            (handle-scopes handler message)
+    "variables"         (handle-variables handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 
