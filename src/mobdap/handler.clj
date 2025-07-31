@@ -371,6 +371,13 @@
               {:variables (filter some? (create-variables vars))}))
     handler))
 
+(defn handle-continue [handler message]
+  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
+    (>!! to-debug-server {:cmd :set-breakpoints :breakpoints (:breakpoints handler)})
+    (>!! to-debug-server {:cmd :run}))
+  (adapter/send-message! (:adapter handler) (success (:seq message) "continue" nil))
+  handler)
+
 (defn handle-terminate [handler message]
   (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
   (adapter/send-message! (:adapter handler) (success (:seq message) "terminate" nil))
@@ -390,6 +397,7 @@
     "stackTrace"        (handle-stacktrace handler message)
     "scopes"            (handle-scopes handler message)
     "variables"         (handle-variables handler message)
+    "continue"          (handle-continue handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 
@@ -401,7 +409,9 @@
     (try
       (loop [handler (create-handler adapter)]
         (recur (if-let [message (adapter/read-message! (:adapter handler))]
-                 (handle-message handler message)
+                 (let [new-handler (handle-message handler message)]
+                   (assert (some? new-handler)) ; TODO: check for some spec or something
+                   new-handler)
                  handler)))
 
       (catch Throwable t
