@@ -48,7 +48,9 @@
                 "202" (if-let [[_ file line] (re-find response-pattern-202 breakpoint)]
                         (do (log/info "Paused at file:" file "line:" line)
                             (>!! to-adapter {:cmd           :stopped
-                                             :type          :breakpoint
+                                             :type          (cond
+                                                              (= command "STEP") :step
+                                                              :else              :breakpoint)
                                              :breakpoint    {:file file
                                                              :line line}})
                             nil)

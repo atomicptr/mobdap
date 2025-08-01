@@ -50,6 +50,11 @@ dap.configurations.lua = {
             return vim.fs.root(0, { ".git" })
         end,
 
+        -- sourcedirs: (Optional) Alternative search dirs for dependencies
+        sourcedirs = {
+            "/home/USERNAME/.luarocks/share/lua/5.1",
+        },
+
         -- port: (Optional: Defaults to 18172) the port on which the server is running
         --       Please configure the same on your client
         port = 18172,

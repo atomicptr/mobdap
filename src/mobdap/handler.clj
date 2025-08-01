@@ -19,6 +19,7 @@
   {:adapter adapter
    :debug-server nil
    :root-dir     nil
+   :source-dirs  []
    :breakpoints  {}
    :channels     {:to-handler (chan)
                   :to-debug-server nil}
@@ -29,17 +30,58 @@
     value
     (Integer/parseInt value)))
 
-(defn- relative-path [from to]
-  (if (= from to)
-    from
-    (.relativize (.toPath (io/file from)) (.toPath (io/file to)))))
+(defn- find-source-dir [handler filepath]
+  (let [file (io/file filepath)]
+    (cond
+      (and (:root-dir handler)
+           (.isAbsolute file)
+           (.exists file)
+           (.startsWith (.getCanonicalPath file) (:root-dir handler)))
+      (:root-dir handler)
+
+      (and (:root-dir handler)
+           (not (.isAbsolute file))
+           (.exists (io/file (:root-dir handler) file)))
+      (str (io/file (:root-dir handler)))
+
+      :else
+      (first (filter #(.startsWith (.getCanonicalPath file) (.getCanonicalPath (io/file %))) (:source-dirs handler))))))
+
+(defn- find-source-file [handler filepath]
+  (let [file (io/file filepath)]
+    (cond
+      (.isAbsolute file)
+      (.getCanonicalPath file)
+
+      (and (:root-dir handler)
+           (.exists (io/file (:root-dir handler) file)))
+      (.getCanonicalPath (io/file (:root-dir handler) file))
+
+      :else
+      (->> (:source-dirs handler)
+           (map #(io/file % filepath))
+           (filter #(.exists %))
+           (map #(.getCanonicalPath %))
+           (first)))))
+
+(defn- find-source-relative-file [handler filepath]
+  (log/info "SOURCE DIRS" (:source-dirs handler))
+  (log/info "ORIG FILE" filepath)
+  (log/info "DIR" (find-source-dir handler filepath))
+  (log/info "FILE" (find-source-file handler filepath))
+  (let [source-dir (.getCanonicalPath (io/file (find-source-dir handler filepath)))
+        filepath   (.getCanonicalPath (io/file filepath))]
+    (assert (some? source-dir))
+    (assert (some? filepath))
+    (string/replace-first (subs filepath (count source-dir)) #"^\/+" "")))
 
 (defn- find-breakpoint-id [handler file line]
-  (when-let [breakpoints (get-in handler [:breakpoints file])]
-    (->> breakpoints
-         (filter #(= (to-int line) (:line %)))
-         first
-         :id)))
+  (let [breakpoints (get-in handler [:breakpoints file])]
+    (when breakpoints
+      (->> breakpoints
+           (filter #(= (to-int line) (:line %)))
+           first
+           :id))))
 
 (defn- response [success seq command body]
   {:type "response"
@@ -156,7 +198,7 @@
          ;   5: "modules/tbl.lua"   - file location again
          6 {:id (swap! stackframe-id-counter inc)
             :name ""
-            :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 0)))}
+            :source {:path (find-source-file handler (frame-info 0))}
             :line (parse-long (frame-info 2))
             :column 0
             :extras {:scope-start (parse-long (frame-info 1))
@@ -176,7 +218,7 @@
          ;   6: "modules/tbl.lua"   - file location again
          7 {:id (swap! stackframe-id-counter inc)
             :name (or (frame-info 0) "")
-            :source {:path (str (io/file (or (:root-dir handler) ".") (frame-info 1)))}
+            :source {:path (find-source-file handler (frame-info 1))}
             :line (parse-long (frame-info 3))
             :column 0
             :extras {:scope-start (parse-long (frame-info 2))
@@ -197,6 +239,7 @@
                :breakpoint (let [file (get-in command [:breakpoint :file])
                                  line (get-in command [:breakpoint :line])
                                  id   (find-breakpoint-id handler file line)]
+                             (assert (some? id))
                              (adapter/send-message!
                               (:adapter handler)
                               (event
@@ -205,6 +248,17 @@
                                 :allThreadsStopped true
                                 :threadId 1
                                 :hitBreakpointIds [id]})))
+
+               :step (let [file (get-in command [:breakpoint :file])
+                           line (get-in command [:breakpoint :line])]
+                       (log/info "Stepped to:" file line)
+                       (adapter/send-message!
+                        (:adapter handler)
+                        (event
+                         "stopped"
+                         {:reason "step"
+                          :allThreadsStopped true
+                          :threadId 1})))
 
                (log/error "Unknown :stopped command:" (:type command)))
 
@@ -219,10 +273,11 @@
     (log/error "Unknown server command:" (:cmd command))))
 
 (defn handle-launch [handler message]
-  (let [adapter   (:adapter handler)
-        port      (or (get-in message [:arguments :port]) 18172)
-        arguments (:arguments message)
-        root-dir  (:rootdir arguments)
+  (let [adapter     (:adapter handler)
+        port        (or (get-in message [:arguments :port]) 18172)
+        arguments   (:arguments message)
+        root-dir    (:rootdir arguments)
+        source-dirs (or (:sourcedirs arguments) [])
         to-handler (get-in handler [:channels :to-handler])]
     (log/info "Waiting for client on port" port)
 
@@ -249,14 +304,15 @@
       (adapter/send-message! adapter (event "initialized"))
 
       (-> handler
-          (assoc    :root-dir root-dir)
+          (assoc    :root-dir    root-dir)
+          (assoc    :source-dirs source-dirs)
           (assoc-in [:channels :to-debug-server] server-channel)))))
 
 (defn handle-set-breakpoints [handler message]
   (let [adapter (:adapter handler)
         {:keys [source breakpoints]} (:arguments message)
         source-path (:path source)
-        filename (relative-path (or (:root-dir handler) source-path) source-path)
+        filename (find-source-relative-file handler source-path)
         breakpoints (mapv #(assoc % :verified true :id (swap! breakpoint-id-counter inc)) breakpoints)]
     (adapter/send-message! adapter (success (:seq message) "setBreakpoints" {:breakpoints breakpoints}))
     (-> handler
