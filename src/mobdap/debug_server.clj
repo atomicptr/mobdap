@@ -50,6 +50,7 @@
                             (>!! to-adapter {:cmd           :stopped
                                              :type          (cond
                                                               (= command "STEP") :step
+                                                              (= command "OUT")  :out
                                                               :else              :breakpoint)
                                              :breakpoint    {:file file
                                                              :line line}})
@@ -122,6 +123,8 @@
                                      (send-command-setb! server-handle filename line))
 
                   :step-in         (send-command! server-handle "step")
+
+                  :step-out        (send-command! server-handle "out")
 
                   :stacktrace      (let [stack (send-command-stack! server-handle)]
                                      (log/info "STACK TRACE GOT:" stack)

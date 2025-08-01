@@ -249,16 +249,14 @@
                                 :threadId 1
                                 :hitBreakpointIds [id]})))
 
-               :step (let [file (get-in command [:breakpoint :file])
-                           line (get-in command [:breakpoint :line])]
-                       (log/info "Stepped to:" file line)
-                       (adapter/send-message!
-                        (:adapter handler)
-                        (event
-                         "stopped"
-                         {:reason "step"
-                          :allThreadsStopped true
-                          :threadId 1})))
+               (:step :out)
+               (adapter/send-message!
+                (:adapter handler)
+                (event
+                 "stopped"
+                 {:reason "step"
+                  :allThreadsStopped true
+                  :threadId 1}))
 
                (log/error "Unknown :stopped command:" (:type command)))
 
@@ -453,6 +451,12 @@
     (adapter/send-message! (:adapter handler) (success (:seq message) "stepIn" nil))
     handler))
 
+(defn handle-step-out [handler message]
+  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
+    (>!! to-debug-server {:cmd :step-out})
+    (adapter/send-message! (:adapter handler) (success (:seq message) "stepOut" nil))
+    handler))
+
 (defn handle-terminate [handler message]
   (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
   (adapter/send-message! (:adapter handler) (success (:seq message) "terminate" nil))
@@ -474,6 +478,7 @@
     "variables"         (handle-variables handler message)
     "continue"          (handle-continue handler message)
     "stepIn"            (handle-step-in handler message)
+    "stepOut"           (handle-step-out handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 
