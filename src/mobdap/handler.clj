@@ -322,15 +322,27 @@
 (defn- table-remove-types-not-to-be-shown [table]
   (filter #(not (#{:function} (second %))) table))
 
+(defn- float-to-string [n]
+  (.replaceAll (format "%.16f" n) "\\.?0*$" ""))
+
 (defn- create-variables [vars]
   (map
    (fn [[k v]]
      (case (:type v)
        :constant {:name (name k)
-                  :value (:value v)
+                  :value (cond
+                           (string?  (:value v)) (:value v)
+                           (int?     (:value v)) (format "%i"     (:value v))
+                           (float?   (:value v)) (float-to-string (:value v))
+                           (number?  (:value v)) (float-to-string (:value v))
+                           (boolean? (:value v)) (str (:value v))
+                           :else     (str (:value v)))
                   :type (cond
-                          (string? (:value v)) "string"
-                          (number? (:value v)) "number"
+                          (string?  (:value v)) "string"
+                          (int?     (:value v)) "int"
+                          (float?   (:value v)) "float"
+                          (number?  (:value v)) "number"
+                          (boolean? (:value v)) "boolean"
                           :else nil)
                   :evaluateName (name k)
                   :variablesReference (:id v)
@@ -363,7 +375,7 @@
 (defn handle-variables [handler message]
   (let [vars-id (get-in message [:arguments :variablesReference])
         vars    (or (:values (find-vars-scope-by-id @(:stackframes handler) vars-id))
-                    (var-index vars-id))]
+                    (@var-index vars-id))]
     (adapter/send-message!
      (:adapter handler)
      (success (:seq message)
@@ -377,6 +389,13 @@
     (>!! to-debug-server {:cmd :run}))
   (adapter/send-message! (:adapter handler) (success (:seq message) "continue" nil))
   handler)
+
+(defn handle-step-in [handler message]
+  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
+    (>!! to-debug-server {:cmd :set-breakpoints :breakpoints (:breakpoints handler)})
+    (>!! to-debug-server {:cmd :step-in})
+    (adapter/send-message! (:adapter handler) (success (:seq message) "stepIn" nil))
+    handler))
 
 (defn handle-terminate [handler message]
   (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
@@ -398,6 +417,7 @@
     "scopes"            (handle-scopes handler message)
     "variables"         (handle-variables handler message)
     "continue"          (handle-continue handler message)
+    "stepIn"            (handle-step-in handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 

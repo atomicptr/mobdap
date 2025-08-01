@@ -119,6 +119,8 @@
                                            {:keys [line]} breakpoints]
                                      (send-command-setb! server-handle filename line))
 
+                  :step-in         (send-command! server-handle "step")
+
                   :stacktrace      (let [stack (send-command-stack! server-handle)]
                                      (log/info "STACK TRACE GOT:" stack)
                                      (>!! to-adapter {:cmd :stacktrace :stack stack :seq (:seq command)}))
