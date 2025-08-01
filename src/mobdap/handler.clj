@@ -249,7 +249,7 @@
                                 :threadId 1
                                 :hitBreakpointIds [id]})))
 
-               (:step :out)
+               (:step :out :over)
                (adapter/send-message!
                 (:adapter handler)
                 (event
@@ -457,6 +457,12 @@
     (adapter/send-message! (:adapter handler) (success (:seq message) "stepOut" nil))
     handler))
 
+(defn handle-next [handler message]
+  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
+    (>!! to-debug-server {:cmd :over})
+    (adapter/send-message! (:adapter handler) (success (:seq message) "next" nil))
+    handler))
+
 (defn handle-terminate [handler message]
   (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
   (adapter/send-message! (:adapter handler) (success (:seq message) "terminate" nil))
@@ -479,6 +485,7 @@
     "continue"          (handle-continue handler message)
     "stepIn"            (handle-step-in handler message)
     "stepOut"           (handle-step-out handler message)
+    "next"              (handle-next handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 

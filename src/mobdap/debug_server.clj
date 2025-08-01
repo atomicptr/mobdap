@@ -51,6 +51,7 @@
                                              :type          (cond
                                                               (= command "STEP") :step
                                                               (= command "OUT")  :out
+                                                              (= command "OVER") :over
                                                               :else              :breakpoint)
                                              :breakpoint    {:file file
                                                              :line line}})
@@ -125,6 +126,8 @@
                   :step-in         (send-command! server-handle "step")
 
                   :step-out        (send-command! server-handle "out")
+
+                  :over            (send-command! server-handle "over")
 
                   :stacktrace      (let [stack (send-command-stack! server-handle)]
                                      (log/info "STACK TRACE GOT:" stack)
