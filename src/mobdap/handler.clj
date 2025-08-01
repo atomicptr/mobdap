@@ -10,10 +10,6 @@
    [taoensso.timbre :as log]))
 
 (def ^:private go-handler (atom nil))
-(def ^:private breakpoint-id-counter (atom 1))
-(def ^:private stackframe-id-counter (atom 1))
-(def ^:private vars-id-counter (atom 1))
-(def ^:private var-index (atom {}))
 
 (defn- create-handler [adapter]
   {:adapter adapter
@@ -23,7 +19,11 @@
    :breakpoints  {}
    :channels     {:to-handler (chan)
                   :to-debug-server nil}
-   :stackframes  (atom [])})
+   :counter      {:breakpoint (atom 0)
+                  :stackframe (atom 0)
+                  :vars       (atom 0)}
+   :stackframes  (atom [])
+   :var-index    (atom {})})
 
 (defn- to-int [value]
   (if (int? value)
@@ -65,10 +65,6 @@
            (first)))))
 
 (defn- find-source-relative-file [handler filepath]
-  (log/info "SOURCE DIRS" (:source-dirs handler))
-  (log/info "ORIG FILE" filepath)
-  (log/info "DIR" (find-source-dir handler filepath))
-  (log/info "FILE" (find-source-file handler filepath))
   (let [source-dir (.getCanonicalPath (io/file (find-source-dir handler filepath)))
         filepath   (.getCanonicalPath (io/file filepath))]
     (assert (some? source-dir))
@@ -157,36 +153,66 @@
     {:type (keyword type)
      :addr addr}))
 
-(defn- parse-value [_ packed-value]
+(defn- parse-inner-value [handler name value]
+  (cond
+    (vector? value)
+    {:id (swap! (get-in handler [:counter :vars]) inc)
+     :name name
+     :type :table
+     :addr nil
+     :value (vec (map (partial parse-inner-value handler nil) value))}
+
+    (map?    value)
+    {:id (swap! (get-in handler [:counter :vars]) inc)
+     :name name
+     :type :table
+     :addr nil
+     :value (map-over-map (fn [k v] (parse-inner-value handler k v)) value)}
+
+    :else
+    {:name name
+     :type :constant
+     :value value}))
+
+(defn- parse-value [handler var-name packed-value]
   (case (count packed-value)
-    1 {:id   (swap! vars-id-counter inc)
+    1 {:name var-name
        :type :constant
        :value nil}
     2 (let [[value ident] packed-value]
         (if-let [{type :type addr :addr} (parse-heap-value ident)]
-          {:id   (swap! vars-id-counter inc)
+          {:id   (swap! (get-in handler [:counter :vars]) inc)
+           :name var-name
            :type type
            :addr addr
-           :value value}
-          {:id   (swap! vars-id-counter inc)
+           :value (case type
+                    :table (if (vector? value)
+                             (vec (map-indexed (partial parse-inner-value handler) value))
+                             (map-over-map (fn [k v] (parse-inner-value handler k v)) value))
+                    value)}
+          {:name var-name
            :type :constant
            :value value}))
     (do (log/error "Could not unpack" packed-value)
         nil)))
 
+(defn- register-vars [handler vars]
+  (log/error "VARS?" vars)
+  (doseq [[_ v] (if (map? vars) vars (zipmap (range (count vars)) vars))]
+    (when (:id v)
+      (swap! (:var-index handler) assoc (:id v) v))
+    (when (= :table (:type v))
+      (register-vars handler (:value v)))))
+
 (defn- transform-stack-trace [handler stack-trace]
   (map-indexed
    (fn [_ [frame-info stack upvalues]]
-     (let [stack    (map-over-map parse-value stack)
-           upvalues (map-over-map parse-value upvalues)]
+     (let [parse-value (partial parse-value handler)
+           stack       (map-over-map parse-value stack)
+           upvalues    (map-over-map parse-value upvalues)]
 
-       ; register vars from stack
-       (doseq [[k v] stack]
-         (swap! var-index assoc k v))
-
-       ; register vars from upvalues
-       (doseq [[k v] upvalues]
-         (swap! var-index assoc k v))
+       (register-vars handler stack)
+       (register-vars handler upvalues)
 
        (case (count frame-info)
          ; example of the frame header (6):
@@ -196,15 +222,15 @@
          ;   3: "Lua"               - Lua (thats where it comes from ig)
          ;   4: "field"             - ??? this can also be "upvalue"
          ;   5: "modules/tbl.lua"   - file location again
-         6 {:id (swap! stackframe-id-counter inc)
+         6 {:id (swap! (get-in handler [:counter :stackframe]) inc)
             :name ""
             :source {:path (find-source-file handler (frame-info 0))}
             :line (parse-long (frame-info 2))
             :column 0
             :extras {:scope-start (parse-long (frame-info 1))
-                     :stack       {:id     (swap! vars-id-counter inc)
+                     :stack       {:id     (swap! (get-in handler [:counter :vars]) inc)
                                    :values stack}
-                     :upvalues    {:id     (swap! vars-id-counter inc)
+                     :upvalues    {:id     (swap! (get-in handler [:counter :vars]) inc)
                                    :values upvalues}
                      :type        (frame-info 4)}}
 
@@ -216,15 +242,15 @@
          ;   4: "Lua"               - Lua (thats where it comes from ig)
          ;   5: "field"             - ??? this can also be "upvalue"
          ;   6: "modules/tbl.lua"   - file location again
-         7 {:id (swap! stackframe-id-counter inc)
+         7 {:id (swap! (get-in handler [:counter :stackframe]) inc)
             :name (or (frame-info 0) "")
             :source {:path (find-source-file handler (frame-info 1))}
             :line (parse-long (frame-info 3))
             :column 0
             :extras {:scope-start (parse-long (frame-info 2))
-                     :stack       {:id     (swap! vars-id-counter inc)
+                     :stack       {:id     (swap! (get-in handler [:counter :vars]) inc)
                                    :values stack}
-                     :upvalues    {:id     (swap! vars-id-counter inc)
+                     :upvalues    {:id     (swap! (get-in handler [:counter :vars]) inc)
                                    :values upvalues}
                      :type        (frame-info 5)}}
 
@@ -311,7 +337,7 @@
         {:keys [source breakpoints]} (:arguments message)
         source-path (:path source)
         filename (find-source-relative-file handler source-path)
-        breakpoints (mapv #(assoc % :verified true :id (swap! breakpoint-id-counter inc)) breakpoints)]
+        breakpoints (mapv #(assoc % :verified true :id (swap! (get-in handler [:counter :breakpoint]) inc)) breakpoints)]
     (adapter/send-message! adapter (success (:seq message) "setBreakpoints" {:breakpoints breakpoints}))
     (-> handler
         (assoc-in [:breakpoints (str filename)] breakpoints))))
@@ -373,68 +399,156 @@
            (get-in m [:extras :upvalues]))))
    data))
 
-(defn- table-remove-types-not-to-be-shown [table]
-  (filter #(not (#{:function} (second %))) table))
-
 (defn- float-to-string [n]
   (.replaceAll (format "%.16f" n) "\\.?0*$" ""))
 
-(defn- create-variables [vars]
+(defn- var-name [n]
+  (cond
+    (keyword? n) (name n)
+    (string?  n) n
+    (number?  n) (str n)
+    :else (str n)))
+
+(defn- var-value [v]
+  (cond
+    (string?  v) (str v)
+    (int?     v) (format "%i"     v)
+    (float?   v) (float-to-string v)
+    (number?  v) (float-to-string v)
+    (boolean? v) (str v)
+    (vector?  v) (format "[%s]" (string/join ", " (map #(var-value (:value %)) v)))
+    (map?     v) (format "{%s}" (string/join ", " (map (fn [[k v]] (str (var-name k) " = " (var-value (:value v)))) v)))
+    :else        (str v)))
+
+(defn- var-type [v]
+  (cond
+    (string?  v) "string"
+    (int?     v) "int"
+    (float?   v) "float"
+    (number?  v) "number"
+    (boolean? v) "boolean"
+    (nil?     v) "null"
+    :else nil))
+
+(defn- var-value-table [v]
+  (cond
+    (vector? v)
+    (format
+     "[%s]"
+     (string/join ", " (map #(var-value (:value %)) v)))
+
+    (map? v)
+    (format
+     "{%s}"
+     (string/join ", " (map (fn [[k v]] (str (var-name k) " = " (var-value (:value v)))) v)))
+
+    (empty? v)
+    "{}"
+
+    :else (throw (ex-info (str "expected vector or map, got: " (pr-str v)) {:value v}))))
+
+(defn- create-scope-variables [vars]
   (map
    (fn [[k v]]
      (case (:type v)
-       :constant {:name (name k)
-                  :value (cond
-                           (string?  (:value v)) (:value v)
-                           (int?     (:value v)) (format "%i"     (:value v))
-                           (float?   (:value v)) (float-to-string (:value v))
-                           (number?  (:value v)) (float-to-string (:value v))
-                           (boolean? (:value v)) (str (:value v))
-                           :else     (str (:value v)))
-                  :type (cond
-                          (string?  (:value v)) "string"
-                          (int?     (:value v)) "int"
-                          (float?   (:value v)) "float"
-                          (number?  (:value v)) "number"
-                          (boolean? (:value v)) "boolean"
-                          :else nil)
-                  :evaluateName (name k)
-                  :variablesReference (:id v)
+       :constant {:name (var-name k)
+                  :value (var-value (:value v))
+                  :type (var-type (:value v))
+                  :evaluateName (var-name k)
+                  :variablesReference 0
                   :namedVariables 0
                   :indexedVariables 0
                   :presentationHint {:kind "data"
                                      :attributes ["constant"]}}
-       :table    {:name (name k)
-                  :value
-                  (if (vector? (:value v))
-                    (format
-                     "[ %s ]"
-                     (string/join ", " (:value v)))
-                    (format
-                     "{ %s }"
-                     (string/join ", " (map (fn [[k v]] (str (name k) " = " v)) (table-remove-types-not-to-be-shown (:value v))))))
-                  :type
-                  (if (vector? (:value v)) "array" "object")
-                  :evaluateName (name k)
+
+       :table    {:name (var-name k)
+                  :value (var-value-table (:value v))
+                  :type (if (vector? (:value v)) "array" "object")
+                  :evaluateName (var-name k)
                   :variablesReference (:id v)
-                  :namedVariables   (if (map?    (:value v)) (count (table-remove-types-not-to-be-shown (:value v))) 0)
-                  :indexedVariables (if (vector? (:value v)) (count (:value v))                0)
+                  :namedVariables   (if (map?    (:value v)) (count (:value v)) 0)
+                  :indexedVariables (if (vector? (:value v)) (count (:value v)) 0)
                   :presentationHint {:kind "data"
                                      :attributes (if (vector? (:value v)) "array" "rawObject")}}
-       :function  nil
-       (do (log/error "Unknown variable type:" (:type v) v)
-           nil)))
+
+       :function  {:name (var-name k)
+                   :value (format "function: %s" (:addr v))
+                   :type "function"
+                   :variablesReference 0
+                   :presentationHint {:kind "method"}}
+
+       (do (log/warn "Unknown variable type found:" k v)
+           {:name  (var-name k)
+            :value (format "%s: %s" (var-name (:type v)) (:addr v))
+            :variablesReference 0
+            :type "unknown"})))
    vars))
 
+(defn- make-var [pname indexed? n value]
+  (let [fstr (str (var-name pname) (if indexed? "[%s]" ".%s"))
+        v    (:value value)]
+    (log/info "MAKE VARS HAPPEN" n v (:id v))
+    (cond
+      (vector? v)
+      {:name (var-name n)
+       :value (var-value-table v)
+       :type "array"
+       :evaluateName (format fstr n)
+       :variablesReference (:id value)
+       :presentationHint {:kind "data"
+                          :attributes ["array"]}}
+
+      (map? v)
+      {:name (var-name n)
+       :value (var-value-table v)
+       :type "object"
+       :evaluateName (format fstr n)
+       :variablesReference (:id value)
+       :presentationHint {:kind "data"
+                          :attributes ["rawObject"]}}
+
+      :else
+      {:name (var-name n)
+       :value (var-value v)
+       :type (var-type v)
+       :evaluateName (format fstr n)
+       :variablesReference 0
+       :presentationHint {:kind "data"}})))
+
+(defn- create-variables [vars]
+  (log/info "CREATE VARS?" vars)
+  (case (:type vars)
+    :table (map-indexed
+            (if (vector? (:value vars))
+              (fn [idx v]   (make-var (:name vars) true (str idx) v))
+              (fn [_ [k v]] (make-var (:name vars) false (var-name k) v)))
+            (:value vars))
+    [nil]))
+
+(defn- find-var-by-id [handler var-id]
+  (let [scope (:values (find-vars-scope-by-id @(:stackframes handler) var-id))
+        vars  (@(:var-index handler) var-id)]
+    (cond
+      scope [scope :scope]
+      vars  [vars  :vars]
+      :else [nil nil])))
+
 (defn handle-variables [handler message]
-  (let [vars-id (get-in message [:arguments :variablesReference])
-        vars    (or (:values (find-vars-scope-by-id @(:stackframes handler) vars-id))
-                    (@var-index vars-id))]
-    (adapter/send-message!
-     (:adapter handler)
-     (success (:seq message)
-              "variables"
-              {:variables (filter some? (create-variables vars))}))
+  (let [vars-id     (get-in message [:arguments :variablesReference])
+        [vars type] (find-var-by-id handler vars-id)]
+    (assert (and (some? vars) (some? type)))
+
+    (let [variables
+          (filter some? (case type
+                          :scope (create-scope-variables vars)
+                          :vars  (create-variables vars)
+                          :else  []))]
+
+      (adapter/send-message!
+       (:adapter handler)
+       (success (:seq message)
+                "variables"
+                {:variables variables})))
     handler))
 
 (defn handle-continue [handler message]

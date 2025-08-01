@@ -2,9 +2,12 @@
   (:require
    [clojure.java.io :as io]
    [mobdap.handler :as handler]
+   [nrepl.server :as nrepl]
    [taoensso.timbre :as log]
    [taoensso.timbre.appenders.core :as appenders])
   (:gen-class))
+
+(defonce nrepl-server (nrepl/start-server :port (or (System/getenv "NREPL_PORT") 45999)))
 
 (defn- cache-dir []
   (or

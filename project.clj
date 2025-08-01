@@ -5,6 +5,7 @@
   :dependencies [[cheshire/cheshire               "6.0.0"]
                  [clj-stacktrace                  "0.2.8"]
                  [com.taoensso/timbre             "6.7.1"]
+                 [nrepl                           "1.3.1"]
                  [org.clojure/clojure             "1.12.1"]
                  [org.clojure/core.async          "1.8.741"]
                  [org.luaj/luaj-jse               "3.0.1"]]
@@ -15,6 +16,7 @@
   :native-image {:opts ["--verbose"
                         "--report-unsupported-elements-at-runtime"
                         "--initialize-at-build-time"]}
-  :profiles {:uberjar {:aot :all
+  :profiles {:dev     {:dependencies [[nubank/matcher-combinators "3.9.1"]]}
+             :uberjar {:aot :all
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
              :native-image {:jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
