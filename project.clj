@@ -10,19 +10,23 @@
                  [org.luaj/luaj-jse                 "3.0.1"]]
   :plugins      [[io.taylorwood/lein-native-image   "0.3.1"]
                  [lein-set-version/lein-set-version "0.4.1"]]
+  :main ^:skip-aot mobdap.main
   :omit-source true
   :source-paths ["src"]
   :target-path "target/%s"
-  :native-image {:opts ["--verbose"
-                        "--report-unsupported-elements-at-runtime"
+  :native-image {:opts ["-H:ReflectionConfigurationFiles=resources/reflection.json"
+                        "--verbose"
                         "--initialize-at-build-time"]}
-  :profiles {:default      {:main mobdap.main}
+  :profiles {:default      {:main ^:skip-aot mobdap.main}
+
              :dev          {:main ^:skip-aot mobdap.dev
                             :source-paths ["src" "dev"]
                             :dependencies [[nrepl/nrepl "1.3.1"]]}
+
              :test         {:dependencies [[nubank/matcher-combinators "3.9.1"]]}
+
              :uberjar      {:aot :all
                             :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
-             :native-image {:name "mobdap"
-                            :aot :all
+
+             :native-image {:aot :all
                             :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
