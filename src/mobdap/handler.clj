@@ -197,7 +197,6 @@
         nil)))
 
 (defn- register-vars [handler vars]
-  (log/error "VARS?" vars)
   (doseq [[_ v] (if (map? vars) vars (zipmap (range (count vars)) vars))]
     (when (:id v)
       (swap! (:var-index handler) assoc (:id v) v))
@@ -487,7 +486,6 @@
 (defn- make-var [pname indexed? n value]
   (let [fstr (str (var-name pname) (if indexed? "[%s]" ".%s"))
         v    (:value value)]
-    (log/info "MAKE VARS HAPPEN" n v (:id v))
     (cond
       (vector? v)
       {:name (var-name n)
@@ -516,7 +514,6 @@
        :presentationHint {:kind "data"}})))
 
 (defn- create-variables [vars]
-  (log/info "CREATE VARS?" vars)
   (case (:type vars)
     :table (map-indexed
             (if (vector? (:value vars))

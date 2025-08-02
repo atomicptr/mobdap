@@ -62,6 +62,10 @@ dap.configurations.lua = {
 }
 ```
 
+## See also
+
+- Using mobdap with **Defold**: [defold-mobdebug](https://github.com/atomicptr/defold-mobdebug)
+
 ## License
 
 GPLv3
