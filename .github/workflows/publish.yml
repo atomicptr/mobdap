@@ -1,0 +1,62 @@
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        config:
+          - name: mobdap-linux-x86_64
+            os: ubuntu-24.04
+          # - name: mobdap-linux-arm64
+          #   os: ubuntu-24.04-arm
+          # - name: mobdap-windows-x86_64
+          #   os: windows-latest
+          - name: mobdap-macos-arm64
+            os: macos-latest
+    runs-on: ${{ matrix.config.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup graalvm
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: 'graalvm-community'
+          java-version: '24'
+
+      - name: setup clojure
+        uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          lein: 2.11.2
+
+      - name: build ${{ matrix.config.name }}
+        run: |
+          lein set-version ${{ github.ref_name }}
+          lein native-image
+
+      - name: "compress unix: ${{ matrix.config.name }}"
+        if: matrix.config.os != 'windows-latest'
+        run: |
+          tar -czvf ${{ matrix.config.name }}.tar.gz target/native-image/mobdap*
+
+      - name: "compress windows: ${{ matrix.config.name }}"
+        if: matrix.config.os == 'windows-latest'
+        run: |
+          Compress-Archive -Path target/native-image/mobdap* -Destination ${{ matrix.config.name }}.zip
+
+      - name: "upload unix: ${{ matrix.config.name }}"
+        if: matrix.config.os != 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.config.name }}.tar.gz
+
+      - name: "upload windows: ${{ matrix.config.name }}"
+        if: matrix.config.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.config.name }}.zip
