@@ -7,6 +7,7 @@
    [clojure.string :as string]
    [mobdap.adapter :as adapter]
    [mobdap.debug-server :as debug-server]
+   [mobdap.utils :refer [float-to-string map-over-map to-int]]
    [taoensso.timbre :as log]))
 
 (def ^:private go-handler (atom nil))
@@ -24,11 +25,6 @@
                   :vars       (atom 0)}
    :stackframes  (atom [])
    :var-index    (atom {})})
-
-(defn- to-int [value]
-  (if (int? value)
-    value
-    (Integer/parseInt value)))
 
 (defn- find-source-dir [handler filepath]
   (let [file (io/file filepath)]
@@ -155,9 +151,6 @@
           :supportsANSIStyling                   false})]
     (adapter/send-message! (:adapter handler) response)
     handler))
-
-(defn- map-over-map [fun m]
-  (reduce-kv (fn [m k v] (assoc m k (fun k v))) {} m))
 
 (defn- parse-heap-value [ident]
   (when-let [[_ type addr] (re-find #"(.+):\s*(0x[A-Za-z0-9]+)" ident)]
@@ -401,9 +394,6 @@
          (when (= id (get-in m [:extras :upvalues :id]))
            (get-in m [:extras :upvalues]))))
    data))
-
-(defn- float-to-string [n]
-  (.replaceAll (format "%.16f" n) "\\.?0*$" ""))
 
 (defn- var-name [n]
   (cond
