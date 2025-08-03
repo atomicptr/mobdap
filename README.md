@@ -65,6 +65,7 @@ dap.configurations.lua = {
 ## See also
 
 - Using mobdap with **Defold**: [defold-mobdebug](https://github.com/atomicptr/defold-mobdebug)
+- Debugger integrated with Neovim for Defold: [defold.nvim](https://github.com/atomicptr/defold.nvim)
 
 ## License
 
