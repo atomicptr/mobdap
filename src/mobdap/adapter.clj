@@ -10,8 +10,8 @@
     Reader
     Writer]))
 
-(defn- parse-content-length! [^Reader reader]
-  (assert (some? reader))
+(defn- parse-content-length! [^BufferedReader reader]
+  (assert (and (some? reader) (instance? BufferedReader reader)))
   (let [length (loop [line (.readLine reader)]
                  (if line
                    (let [values (re-find #"content-length\s*:\s*([0-9]+)" (string/trim (string/lower-case line)))
@@ -27,7 +27,7 @@
 (defn read-message! [adapter]
   (let [reader (:reader adapter)
         length (parse-content-length! reader)]
-    (assert (some? reader))
+    (assert (and (some? reader) (instance? BufferedReader reader)))
     (when length
       (let [buffer (char-array length)]
         (.read reader buffer 0 length)
@@ -39,7 +39,7 @@
   (let [writer (:writer adapter)
         json-str (json/generate-string message)
         length   (count json-str)]
-    (assert (some? writer))
+    (assert (and (some? writer) (instance? BufferedWriter writer)))
     (log/info "Send Message:" message)
     (doto writer
       (.write (str "Content-Length: " length "\r\n\r\n" json-str))
