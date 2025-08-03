@@ -16,7 +16,7 @@
 (def ^:private response-pattern-204 #"^204 Output (\w+) (\d+)$")
 (def ^:private response-pattern-401 #"^401 Error in Execution (\d+)\s*$")
 
-(defn send-line! [server line]
+(defn- send-line! [server line]
   (let [writer (get-in server [:client :writer])]
     (log/info "Debug Server -> Debuggee" line)
     (doto writer
@@ -24,7 +24,7 @@
       (.write "\n")
       (.flush))))
 
-(defn read-response! [server]
+(defn- read-response! [server]
   (let [reader (get-in server [:client :reader])]
     (when-let [message (.readLine reader)]
       (log/info "Debuggee -> Debug Server:" message)
@@ -75,19 +75,19 @@
                 (do (log/error "Unknown Error:" breakpoint)
                     nil)))))))))
 
-(defn send-command-delb! [server file line]
+(defn- send-command-delb! [server file line]
   (send-line! server (format "DELB %s %d" file line)))
 
-(defn send-command-setb! [server file line]
+(defn- send-command-setb! [server file line]
   (send-line! server (format "SETB %s %d" file line)))
 
-(defn send-command-stack! [server]
+(defn- send-command-stack! [server]
   (send-line! server "STACK")
   (if-let [[_ stack-code] (re-find response-pattern-200 (read-response! server))]
     (lua/extract-table stack-code)
     nil))
 
-(defn is-connected? [socket]
+(defn- is-connected? [socket]
   (and (not (.isClosed socket))
        (.isConnected socket)
        (not (.isOutputShutdown socket))))
@@ -146,7 +146,6 @@
                 (recur)))
 
             (loop []
-              ; TODO: this actually doesnt work but we should shut down mobdap when client is gone
               (when (not (is-connected? client))
                 (log/info "Lost connection to debuggee, exitting...")
                 (System/exit 0))
