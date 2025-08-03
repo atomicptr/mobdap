@@ -307,24 +307,25 @@
     (let [server-channel (debug-server/run-server! (int port) to-handler)]
       (log/info "Waiting for server to finish setup...")
 
-      (loop [] ; TODO: this should not be blocking...
-        (let [response (<!! to-handler)]
-          (if (= :setup-done (:cmd response))
-            nil
-            (recur))))
+      (go-loop [setup-done false]
+        (cond
+          (not setup-done)
+          (let [response (<!! to-handler)]
+            (if (= :setup-done (:cmd response))
+              (do
+                (adapter/send-message! adapter (success (:seq message) "launch" nil))
+                (adapter/send-message! adapter (event "initialized"))
+                (log/info "Finished server setup")
+                (recur true))
+              (recur false)))
 
-      (log/info "Finished server setup")
-
-      (go-loop []
-        (when-let [command (<!! to-handler)]
-          (try
-            (handle-debug-server-command @go-handler command)
-            (catch Throwable t
-              (log/error "Message from debug server handler" (pst-str (parse-exception t))))))
-        (recur))
-
-      (adapter/send-message! adapter (success (:seq message) "launch" nil))
-      (adapter/send-message! adapter (event "initialized"))
+          :else
+          (do (when-let [command (<!! to-handler)]
+                (try
+                  (handle-debug-server-command @go-handler command)
+                  (catch Throwable t
+                    (log/error "Message from debug server handler" (pst-str (parse-exception t))))))
+              (recur true))))
 
       (-> handler
           (assoc    :root-dir    root-dir)
