@@ -99,6 +99,17 @@
     :event event
     :body body}))
 
+(defn- send-command-to-debug-server
+  ([handler command] (send-command-to-debug-server handler command false))
+  ([handler command update-breakpoints?]
+   (let [to-debug-server (get-in handler [:channels :to-debug-server])]
+     (assert (some? to-debug-server))
+
+     (when update-breakpoints?
+       (>!! to-debug-server {:cmd :set-breakpoints :breakpoints (:breakpoints handler)}))
+
+     (>!! to-debug-server command))))
+
 (defn handle-initialize [handler message]
   (let [response
         (success
@@ -264,7 +275,6 @@
                :breakpoint (let [file (get-in command [:breakpoint :file])
                                  line (get-in command [:breakpoint :line])
                                  id   (find-breakpoint-id handler file line)]
-                             (assert (some? id))
                              (adapter/send-message!
                               (:adapter handler)
                               (event
@@ -272,7 +282,7 @@
                                {:reason "breakpoint"
                                 :allThreadsStopped true
                                 :threadId 1
-                                :hitBreakpointIds [id]})))
+                                :hitBreakpointIds (vec (filter some? [id]))})))
 
                (:step :out :over)
                (adapter/send-message!
@@ -344,11 +354,7 @@
 ;
 (defn handle-configuration-done [handler message]
   (adapter/send-message! (:adapter handler) (success (:seq message) "configurationDone" nil))
-
-  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
-    (>!! to-debug-server {:cmd :set-breakpoints :breakpoints (:breakpoints handler)})
-    (>!! to-debug-server {:cmd :run}))
-
+  (send-command-to-debug-server handler {:cmd :run} true)
   handler)
 
 (defn handle-threads [handler message]
@@ -357,12 +363,9 @@
   handler)
 
 (defn handle-stacktrace [handler message]
-  (let [to-debug-server (get-in handler [:channels :to-debug-server])
-        start-frame (get-in message [:arguments :startFrame])
+  (let [start-frame (get-in message [:arguments :startFrame])
         levels      (get-in message [:arguments :levels])]
-
-    (>!! to-debug-server {:cmd :stacktrace :start start-frame :length levels :seq (:seq message)})
-
+    (send-command-to-debug-server handler {:cmd :stacktrace :start start-frame :length levels :seq (:seq message)})
     handler))
 
 (defn- create-scope [frame vars name hint]
@@ -387,7 +390,7 @@
      (:adapter handler)
      (success (:seq message)
               "scopes"
-              {:scopes (filter some? [stack-scope upvals-scope])}))
+              {:scopes (vec (filter some? [stack-scope upvals-scope]))}))
     handler))
 
 (defn- find-vars-scope-by-id [data id]
@@ -537,10 +540,10 @@
     (assert (and (some? vars) (some? type)))
 
     (let [variables
-          (filter some? (case type
-                          :scope (create-scope-variables vars)
-                          :vars  (create-variables vars)
-                          :else  []))]
+          (vec (filter some? (case type
+                               :scope (create-scope-variables vars)
+                               :vars  (create-variables vars)
+                               :else  [])))]
 
       (adapter/send-message!
        (:adapter handler)
@@ -550,33 +553,27 @@
     handler))
 
 (defn handle-continue [handler message]
-  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
-    (>!! to-debug-server {:cmd :set-breakpoints :breakpoints (:breakpoints handler)})
-    (>!! to-debug-server {:cmd :run}))
+  (send-command-to-debug-server handler {:cmd :run} true)
   (adapter/send-message! (:adapter handler) (success (:seq message) "continue" nil))
   handler)
 
 (defn handle-step-in [handler message]
-  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
-    (>!! to-debug-server {:cmd :set-breakpoints :breakpoints (:breakpoints handler)})
-    (>!! to-debug-server {:cmd :step-in})
-    (adapter/send-message! (:adapter handler) (success (:seq message) "stepIn" nil))
-    handler))
+  (send-command-to-debug-server handler {:cmd :step-in} true)
+  (adapter/send-message! (:adapter handler) (success (:seq message) "stepIn" nil))
+  handler)
 
 (defn handle-step-out [handler message]
-  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
-    (>!! to-debug-server {:cmd :step-out})
-    (adapter/send-message! (:adapter handler) (success (:seq message) "stepOut" nil))
-    handler))
+  (send-command-to-debug-server handler {:cmd :step-out} true)
+  (adapter/send-message! (:adapter handler) (success (:seq message) "stepOut" nil))
+  handler)
 
 (defn handle-next [handler message]
-  (let [to-debug-server (get-in handler [:channels :to-debug-server])]
-    (>!! to-debug-server {:cmd :over})
-    (adapter/send-message! (:adapter handler) (success (:seq message) "next" nil))
-    handler))
+  (send-command-to-debug-server handler {:cmd :over} true)
+  (adapter/send-message! (:adapter handler) (success (:seq message) "next" nil))
+  handler)
 
 (defn handle-terminate [handler message]
-  (>!! (get-in handler [:channels :to-debug-server]) {:cmd :exit})
+  (send-command-to-debug-server handler {:cmd :exit})
   (adapter/send-message! (:adapter handler) (success (:seq message) "terminate" nil))
   handler)
 

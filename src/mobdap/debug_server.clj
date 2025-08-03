@@ -18,7 +18,7 @@
 
 (defn send-line! [server line]
   (let [writer (get-in server [:client :writer])]
-    (log/info "Server -> Client:" line)
+    (log/info "Debug Server -> Debuggee" line)
     (doto writer
       (.write line)
       (.write "\n")
@@ -27,12 +27,11 @@
 (defn read-response! [server]
   (let [reader (get-in server [:client :reader])]
     (when-let [message (.readLine reader)]
-      (log/info "Client -> Server:" message)
+      (log/info "Debuggee -> Debug Server:" message)
       (string/trim message))))
 
 (defn- send-command! [server command]
   (let [command (string/upper-case command)]
-    (log/info "Send Command:" command)
     (send-line! server command)
     (when (read-response! server)
       (loop []
@@ -76,6 +75,9 @@
                 (do (log/error "Unknown Error:" breakpoint)
                     nil)))))))))
 
+(defn send-command-delb! [server file line]
+  (send-line! server (format "DELB %s %d" file line)))
+
 (defn send-command-setb! [server file line]
   (send-line! server (format "SETB %s %d" file line)))
 
@@ -85,7 +87,6 @@
     (lua/extract-table stack-code)
     nil))
 
-; TODO: this doesnt actually work
 (defn is-connected? [socket]
   (and (not (.isClosed socket))
        (.isConnected socket)
@@ -97,7 +98,7 @@
       (with-open [server-socket (ServerSocket. port)]
         (try
           (let [client (.accept server-socket)
-                _      (log/info "Client connected" client)
+                _      (log/info "Debuggee connected" client)
                 writer (PrintWriter. (.getOutputStream client) true)
                 reader (BufferedReader. (InputStreamReader. (.getInputStream client)))
                 server-handle {:client   {:socket client
@@ -114,14 +115,18 @@
 
             (go-loop []
               (when-let [command (<!! to-debug-server)]
-                (log/info "Command to debug server" command)
+                (log/info "Handler -> Debug Server:" command)
                 (case (:cmd command)
                   :run             (send-command! server-handle "run")
 
-                  ; TODO: delete all prior breakpoints by using "LISTB" -> "DELB"
-                  :set-breakpoints (doseq [[filename breakpoints] (:breakpoints command)
-                                           {:keys [line]} breakpoints]
-                                     (send-command-setb! server-handle filename line))
+                  :set-breakpoints (do
+                                     ; this command only gets called before executing a command so we
+                                     ; can just delete and re-apply all breakpoints
+                                     (send-command-delb! server-handle "*" 0)
+
+                                     (doseq [[filename breakpoints] (:breakpoints command)
+                                             {:keys [line]} breakpoints]
+                                       (send-command-setb! server-handle filename line)))
 
                   :step-in         (send-command! server-handle "step")
 
@@ -143,7 +148,7 @@
             (loop []
               ; TODO: this actually doesnt work but we should shut down mobdap when client is gone
               (when (not (is-connected? client))
-                (log/info "Lost connection to client, exitting...")
+                (log/info "Lost connection to debuggee, exitting...")
                 (System/exit 0))
               (recur)))
 
