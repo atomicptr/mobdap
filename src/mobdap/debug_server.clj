@@ -2,7 +2,7 @@
   (:require
    [clj-stacktrace.core :refer [parse-exception]]
    [clj-stacktrace.repl :refer [pst-str]]
-   [clojure.core.async :refer [<!! >!! chan go-loop thread]]
+   [clojure.core.async :refer [<!! >!! chan go go-loop thread]]
    [clojure.string :as string]
    [mobdap.lua :as lua]
    [taoensso.timbre :as log])
@@ -117,7 +117,7 @@
               (when-let [command (<!! to-debug-server)]
                 (log/info "Handler -> Debug Server:" command)
                 (case (:cmd command)
-                  :run             (send-command! server-handle "run")
+                  :run             (go (send-command! server-handle "run"))
 
                   :set-breakpoints (do
                                      ; this command only gets called before executing a command so we
@@ -128,11 +128,11 @@
                                              {:keys [line]} breakpoints]
                                        (send-command-setb! server-handle filename line)))
 
-                  :step-in         (send-command! server-handle "step")
+                  :step-in         (go (send-command! server-handle "step"))
 
-                  :step-out        (send-command! server-handle "out")
+                  :step-out        (go (send-command! server-handle "out"))
 
-                  :over            (send-command! server-handle "over")
+                  :over            (go (send-command! server-handle "over"))
 
                   :stacktrace      (let [stack (send-command-stack! server-handle)]
                                      (>!! to-adapter {:cmd :stacktrace :stack stack :seq (:seq command)}))
