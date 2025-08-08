@@ -14,7 +14,8 @@
 
 (def cli-options
   [["-v" "--version" "Show the installed version of mobdap"]
-   ["-h" "--help"    "Show the help text"]])
+   ["-h" "--help"    "Show the help text"]
+   [nil  "--debug"   "Show debug logs"]])
 
 (defn- print-usage [result]
   (println "Usage:")
@@ -43,8 +44,11 @@
       :else
       (do
         (log/set-config!
-         {:level :info
+         {:level (if (get-in res [:options :debug])
+                   :debug
+                   :info)
           :appenders {:spit (appenders/spit-appender {:fname (str (io/file (cache-dir) "mobdap.log"))})}})
         (log/info "Started mobdap with arguments:" args)
+        (log/debug "CLI Options" (dissoc res :summary))
         (handler/run)))))
 
