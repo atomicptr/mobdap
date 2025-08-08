@@ -262,7 +262,7 @@
    stack-trace))
 
 (defn- handle-debug-server-command [handler command]
-  (log/info "Received command from debug server:" command)
+  (log/info "Handler: Received command from debug server:" command)
   (case (:cmd command)
     :stopped (case (:type command)
                :breakpoint (let [file (get-in command [:breakpoint :file])
@@ -291,7 +291,7 @@
     :stacktrace (let [seq   (:seq   command)
                       stack (:stack command)
                       stack (transform-stack-trace handler stack)]
-                  (log/info "Stacktrace Result" stack)
+                  (log/debug "Stacktrace:" stack)
                   (reset! (:stackframes handler) stack)
                   (adapter/send-message! (:adapter handler) (success seq "stackTrace" {:stackFrames (map #(dissoc % :extras) stack)
                                                                                        :totalFrames (count stack)})))
@@ -305,10 +305,10 @@
         root-dir    (:rootdir arguments)
         source-dirs (or (:sourcedirs arguments) [])
         to-handler (get-in handler [:channels :to-handler])]
-    (log/info "Waiting for client on port" port)
+    (log/info "Handler: Waiting for client on port" port)
 
     (let [server-channel (debug-server/run-server! (int port) to-handler)]
-      (log/info "Waiting for server to finish setup...")
+      (log/info "Handler: Waiting for server to finish setup...")
 
       (go-loop [setup-done false]
         (cond
@@ -318,7 +318,7 @@
               (do
                 (adapter/send-message! adapter (success (:seq message) "launch" nil))
                 (adapter/send-message! adapter (event "initialized"))
-                (log/info "Finished server setup")
+                (log/info "Handler: Finished server setup")
                 (recur true))
               (recur false)))
 
@@ -568,7 +568,7 @@
   handler)
 
 (defn handle-message [handler message]
-  (log/info "Handle incoming message:" message)
+  (log/info "Handler: Incoming message:" message)
 
   (reset! go-handler handler)
 

@@ -32,7 +32,7 @@
       (let [buffer (char-array length)]
         (.read reader buffer 0 length)
         (let [message (json/parse-string (String/new buffer) keyword)]
-          (log/info "Received Message:" message)
+          (log/debug "Received Message:" message)
           message)))))
 
 (defn send-message! [adapter message]
@@ -40,7 +40,7 @@
         json-str (json/generate-string message)
         length   (count json-str)]
     (assert (and (some? writer) (instance? BufferedWriter writer)))
-    (log/info "Send Message:" message)
+    (log/debug "Send Message:" message)
     (doto writer
       (.write (str "Content-Length: " length "\r\n\r\n" json-str))
       (.flush))))

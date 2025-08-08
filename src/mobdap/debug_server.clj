@@ -18,7 +18,7 @@
 
 (defn- send-line! [server line]
   (let [writer (get-in server [:client :writer])]
-    (log/info "Debug Server -> Debuggee" line)
+    (log/debug "Debug Server -> Debuggee" line)
     (doto writer
       (.write line)
       (.write "\n")
@@ -27,7 +27,7 @@
 (defn- read-response! [server]
   (let [reader (get-in server [:client :reader])]
     (when-let [message (.readLine reader)]
-      (log/info "Debuggee -> Debug Server:" message)
+      (log/debug "Debuggee -> Debug Server:" message)
       (string/trim message))))
 
 (defn- send-command! [server command]
@@ -63,13 +63,13 @@
                 "204" (if-let [[_ text size] (re-find response-pattern-204 breakpoint)]
                         (let [size (parse-long size)
                               message (if (pos? size) (read-response! server) "")]
-                          (log/info "OUT1:" text)
-                          (log/info "OUT2:" message)
+                          (log/debug "OUT1:" text)
+                          (log/debug "OUT2:" message)
                           (recur))
                         (recur))
                 "401" (if-let [[_ _size] (re-find response-pattern-401 breakpoint)]
                         (let [message (read-response! server)]
-                          (log/info "Error in remote application:" message)
+                          (log/error "Error in remote application:" message)
                           nil)
                         (recur))
                 (do (log/error "Unknown Error:" breakpoint)
@@ -115,7 +115,7 @@
 
             (go-loop []
               (when-let [command (<!! to-debug-server)]
-                (log/info "Handler -> Debug Server:" command)
+                (log/debug "Handler -> Debug Server:" command)
                 (case (:cmd command)
                   :run             (go (send-command! server-handle "run"))
 
