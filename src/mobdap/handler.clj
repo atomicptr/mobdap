@@ -310,6 +310,9 @@
     (let [server-channel (debug-server/run-server! (int port) to-handler)]
       (log/info "Handler: Waiting for server to finish setup...")
 
+      ; send a special event indicating to the editor that it could start the game now
+      (adapter/send-message! adapter (event "mobdap_waiting_for_connection"))
+
       (go-loop [setup-done false]
         (cond
           (not setup-done)
