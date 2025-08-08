@@ -4,4 +4,4 @@
 
 cd "$(dirname "$0")" || exit
 
-lein with-profile dev run
+lein with-profile dev run --debug

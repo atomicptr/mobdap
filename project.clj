@@ -1,4 +1,4 @@
-(defproject mobdap "0.1.0-alpha2"
+(defproject mobdap "0.1.1"
   :description "Debug Adapter for MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
@@ -17,6 +17,8 @@
   :target-path "target/%s"
   :native-image {:opts ["-H:ReflectionConfigurationFiles=resources/reflection.json"
                         "--verbose"
+                        "--no-fallback"
+                        "--parallelism=32"
                         "--initialize-at-build-time"]}
   :profiles {:default      {:main ^:skip-aot mobdap.main}
 
