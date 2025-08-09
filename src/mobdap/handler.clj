@@ -300,7 +300,7 @@
 
 (defn handle-launch [handler message]
   (let [adapter     (:adapter handler)
-        port        (or (get-in message [:arguments :port]) 18172)
+        port        (or (get-in message [:arguments :port]) 8172)
         arguments   (:arguments message)
         root-dir    (:rootdir arguments)
         source-dirs (or (:sourcedirs arguments) [])

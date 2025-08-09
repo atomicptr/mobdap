@@ -20,7 +20,7 @@ When you want to debug import it and call the start function:
 -- perhaps hidden behind an env variable or whatever
 if enable_debugger then
     local debugger = require "mobdebug"
-    debugger.start("127.0.0.1", 18172) -- NOTE: the port here, this has to be the same as in your editor config
+    debugger.start("127.0.0.1", 8172) -- NOTE: the port here, this has to be the same as in your editor config
 end
 ```
 
@@ -57,7 +57,7 @@ dap.configurations.lua = {
 
         -- port: (Optional: Defaults to 18172) the port on which the server is running
         --       Please configure the same on your client
-        port = 18172,
+        port = 8172,
     },
 }
 ```

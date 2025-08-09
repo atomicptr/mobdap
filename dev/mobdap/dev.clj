@@ -4,6 +4,6 @@
 
 (defonce nrepl-server (atom {}))
 
-(defn -main [& args]
+(defn -main [& _]
   (reset! nrepl-server (nrepl/start-server :port (or (System/getenv "NREPL_PORT") 45999)))
-  (apply mobdap/-main args))
+  (apply mobdap/-main ["--debug"]))
