@@ -11,14 +11,24 @@ jobs:
     strategy:
       matrix:
         config:
+          - name: mobdap-jar
+            os: ubuntu-24.04
+            profile: jar
           - name: mobdap-linux-x86_64
             os: ubuntu-24.04
+            profile: unix
           - name: mobdap-linux-arm64
             os: ubuntu-24.04-arm
-          # - name: mobdap-windows-x86_64
-          #   os: windows-latest
+            profile: unix
+          - name: mobdap-macos-x86_64
+            os: macos-13
+            profile: unix
           - name: mobdap-macos-arm64
             os: macos-latest
+            profile: unix
+          # - name: mobdap-windows-x86_64
+          #   os: windows-latest
+          #   profile: windows
     runs-on: ${{ matrix.config.os }}
     steps:
       - uses: actions/checkout@v4
@@ -35,28 +45,46 @@ jobs:
           lein: 2.11.2
 
       - name: build ${{ matrix.config.name }}
+        if: matrix.config.profile == 'jar'
+        run: |
+          lein set-version ${{ github.ref_name }}
+          lein uberjar
+
+      - name: build ${{ matrix.config.name }}
+        if: matrix.config.profile != 'jar'
         run: |
           lein set-version ${{ github.ref_name }}
           lein native-image
 
+      - name: move jar ${{ matrix.config.name }}
+        if: matrix.config.profile == 'jar'
+        run: |
+          mv target/uberjar/mobdap-*-standalone.jar ${{ matrix.config.name }}
+
+      - name: "upload jar: ${{ matrix.config.name }}"
+        if: matrix.config.profile == 'jar'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.config.name }}.jar
+
       - name: "compress unix: ${{ matrix.config.name }}"
-        if: matrix.config.os != 'windows-latest'
+        if: matrix.config.profile == 'unix'
         run: |
           tar -czvf ${{ matrix.config.name }}.tar.gz target/native-image/mobdap*
 
-      - name: "compress windows: ${{ matrix.config.name }}"
-        if: matrix.config.os == 'windows-latest'
-        run: |
-          Compress-Archive -Path target/native-image/mobdap* -Destination ${{ matrix.config.name }}.zip
-
       - name: "upload unix: ${{ matrix.config.name }}"
-        if: matrix.config.os != 'windows-latest'
+        if: matrix.config.profile == 'unix'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.config.name }}.tar.gz
 
+      - name: "compress windows: ${{ matrix.config.name }}"
+        if: matrix.config.profile == 'windows'
+        run: |
+          Compress-Archive -Path target/native-image/mobdap* -Destination ${{ matrix.config.name }}.zip
+
       - name: "upload windows: ${{ matrix.config.name }}"
-        if: matrix.config.os == 'windows-latest'
+        if: matrix.config.profile == 'windows'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.config.name }}.zip
