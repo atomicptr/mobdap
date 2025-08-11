@@ -41,6 +41,7 @@ jobs:
 
       - name: setup clojure
         uses: DeLaGuardo/setup-clojure@13.4
+        if: matrix.config.profile != 'windows'
         with:
           lein: 2.11.2
 
@@ -61,10 +62,9 @@ jobs:
       - name: build ${{ matrix.config.name }}
         if: matrix.config.profile == 'windows'
         run: |
-          $GITHUB_REF_NAME = $env:GITHUB_REF_NAME
-          $VERSION = $GITHUB_REF_NAME -replace '^v', ''
-          lein set-version "$VERSION"
-          lein native-image
+          curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein.bat -O lein.bat
+          .\lein.bat self-install
+          .\lein.bat native-image
 
       - name: move jar ${{ matrix.config.name }}
         if: matrix.config.profile == 'jar'
