@@ -26,9 +26,9 @@ jobs:
           - name: mobdap-macos-arm64
             os: macos-latest
             profile: unix
-          # - name: mobdap-windows-x86_64
-          #   os: windows-latest
-          #   profile: windows
+          - name: mobdap-windows-x86_64
+            os: windows-latest
+            profile: windows
     runs-on: ${{ matrix.config.os }}
     steps:
       - uses: actions/checkout@v4
