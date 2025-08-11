@@ -1,4 +1,4 @@
-(defproject mobdap "0.1.3"
+(defproject mobdap "0.1.4"
   :description "Debug Adapter for MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
@@ -20,16 +20,24 @@
                         "--no-fallback"
                         "--parallelism=32"
                         "--initialize-at-build-time"]}
-  :profiles {:default      {:main ^:skip-aot mobdap.main}
+  :profiles {:default
+             {:main ^:skip-aot mobdap.main
+              :set-version {:updates [{:path "src/mobdap/main.clj"
+                                       :search-regex  #"mobdap-version \"\d+\.\d+\.\d+(-\w+)?\""
+                                       :replace-regex #"\d+\.\d+\.\d+(-\w+)?"}]}}
 
-             :dev          {:main ^:skip-aot mobdap.dev
-                            :source-paths ["src" "dev"]
-                            :dependencies [[nrepl/nrepl "1.3.1"]]}
+             :dev
+             {:main ^:skip-aot mobdap.dev
+              :source-paths ["src" "dev"]
+              :dependencies [[nrepl/nrepl "1.3.1"]]}
 
-             :test         {:dependencies [[nubank/matcher-combinators "3.9.1"]]}
+             :test
+             {:dependencies [[nubank/matcher-combinators "3.9.1"]]}
 
-             :uberjar      {:aot :all
-                            :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
+             :uberjar
+             {:aot :all
+              :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
 
-             :native-image {:aot :all
-                            :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
+             :native-image
+             {:aot :all
+              :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})

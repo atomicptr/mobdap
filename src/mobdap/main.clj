@@ -25,6 +25,8 @@
   (println)
   (println (:summary result)))
 
+(def ^:private mobdap-version "0.1.4")
+
 (defn -main [& args]
   (let [res (parse-opts args cli-options)]
     (cond
@@ -40,7 +42,7 @@
       (get-in res [:options :help]) (print-usage res)
 
       ; --version
-      (get-in res [:options :version]) (println (System/getProperty "mobdap.version"))
+      (get-in res [:options :version]) (println mobdap-version)
 
       ; run the app
       :else

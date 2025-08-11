@@ -47,13 +47,15 @@ jobs:
       - name: build ${{ matrix.config.name }}
         if: matrix.config.profile == 'jar'
         run: |
-          lein set-version ${{ github.ref_name }}
+          VERSION=${GITHUB_REF_NAME#v}
+          lein set-version $VERSION
           lein uberjar
 
       - name: build ${{ matrix.config.name }}
         if: matrix.config.profile != 'jar'
         run: |
-          lein set-version ${{ github.ref_name }}
+          VERSION=${GITHUB_REF_NAME#v}
+          lein set-version $VERSION
           lein native-image
 
       - name: move jar ${{ matrix.config.name }}
