@@ -1,5 +1,5 @@
 (defproject mobdap "0.1.4"
-  :description "Debug Adapter for MobDap"
+  :description "Debug adapter implementation for Lua / MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
   :dependencies [[cheshire/cheshire                 "6.0.0"]
@@ -15,11 +15,6 @@
   :omit-source true
   :source-paths ["src"]
   :target-path "target/%s"
-  :native-image {:opts ["-H:ReflectionConfigurationFiles=resources/reflection.json"
-                        "--verbose"
-                        "--no-fallback"
-                        "--parallelism=32"
-                        "--initialize-at-build-time"]}
   :profiles {:default
              {:main ^:skip-aot mobdap.main
               :set-version {:updates [{:path "src/mobdap/main.clj"
@@ -35,9 +30,16 @@
              {:dependencies [[nubank/matcher-combinators "3.9.1"]]}
 
              :uberjar
-             {:aot :all
+             {:main mobdap.main
+              :aot :all
               :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
 
              :native-image
-             {:aot :all
-              :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
+             {:main mobdap.main
+              :aot :all
+              :jvm-opts ["-Dclojure.compiler.direct-linking=true"]
+              :native-image {:opts ["-H:ReflectionConfigurationFiles=resources/reflection.json"
+                                    "--verbose"
+                                    "--no-fallback"
+                                    "--parallelism=32"
+                                    "--initialize-at-build-time"]}}})
