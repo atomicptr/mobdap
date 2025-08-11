@@ -64,6 +64,9 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein.bat -O lein.bat
           .\lein.bat self-install
+          $GITHUB_REF_NAME = $env:GITHUB_REF_NAME
+          $VERSION = $GITHUB_REF_NAME -replace '^v', ''
+          .\lein.bat set-version "$VERSION"
           .\lein.bat native-image
 
       - name: move jar ${{ matrix.config.name }}
