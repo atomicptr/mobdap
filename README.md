@@ -1,6 +1,6 @@
 # mobdap
 
-Experimental implementation of the [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/) for [MobDebug](https://github.com/pkulchenko/MobDebug)
+[Debug adapter](https://microsoft.github.io/debug-adapter-protocol/) implementation for [Lua](https://lua.org/) / [MobDebug](https://github.com/pkulchenko/MobDebug)
 
 ## How it works
 
@@ -55,7 +55,7 @@ dap.configurations.lua = {
             "/home/USERNAME/.luarocks/share/lua/5.1",
         },
 
-        -- port: (Optional: Defaults to 18172) the port on which the server is running
+        -- port: (Optional: Defaults to 8172) the port on which the server is running
         --       Please configure the same on your client
         port = 8172,
     },
