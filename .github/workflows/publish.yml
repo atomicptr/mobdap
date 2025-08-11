@@ -14,19 +14,19 @@ jobs:
           - name: mobdap.jar
             os: ubuntu-24.04
             profile: jar
-          - name: mobdap-linux-x86_64
+          - name: mobdap-linux-amd64
             os: ubuntu-24.04
             profile: unix
           - name: mobdap-linux-arm64
             os: ubuntu-24.04-arm
             profile: unix
-          - name: mobdap-macos-x86_64
+          - name: mobdap-macos-amd64
             os: macos-13
             profile: unix
           - name: mobdap-macos-arm64
             os: macos-latest
             profile: unix
-          - name: mobdap-windows-x86_64
+          - name: mobdap-windows-amd64
             os: windows-latest
             profile: windows
     runs-on: ${{ matrix.config.os }}
