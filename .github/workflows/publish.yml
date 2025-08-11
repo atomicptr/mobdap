@@ -35,14 +35,12 @@ jobs:
 
       - name: setup graalvm
         uses: graalvm/setup-graalvm@v1
-        shell: bash
         with:
           distribution: 'graalvm-community'
           java-version: '24'
 
       - name: setup clojure
         uses: DeLaGuardo/setup-clojure@13.4
-        shell: bash
         with:
           lein: 2.11.2
 
@@ -50,15 +48,22 @@ jobs:
         if: matrix.config.profile == 'jar'
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          lein set-version $VERSION
+          lein set-version "$VERSION"
           lein uberjar
 
       - name: build ${{ matrix.config.name }}
-        if: matrix.config.profile != 'jar'
-        shell: bash
+        if: matrix.config.profile == 'unix'
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          lein set-version $VERSION
+          lein set-version "$VERSION"
+          lein native-image
+
+      - name: build ${{ matrix.config.name }}
+        if: matrix.config.profile == 'windows'
+        run: |
+          $GITHUB_REF_NAME = $env:GITHUB_REF_NAME
+          $VERSION = $GITHUB_REF_NAME -replace '^v', ''
+          lein set-version "$VERSION"
           lein native-image
 
       - name: move jar ${{ matrix.config.name }}
