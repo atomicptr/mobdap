@@ -35,12 +35,14 @@ jobs:
 
       - name: setup graalvm
         uses: graalvm/setup-graalvm@v1
+        shell: bash
         with:
           distribution: 'graalvm-community'
           java-version: '24'
 
       - name: setup clojure
         uses: DeLaGuardo/setup-clojure@13.4
+        shell: bash
         with:
           lein: 2.11.2
 
