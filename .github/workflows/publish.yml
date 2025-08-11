@@ -53,6 +53,7 @@ jobs:
 
       - name: build ${{ matrix.config.name }}
         if: matrix.config.profile != 'jar'
+        shell: bash
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           lein set-version $VERSION
