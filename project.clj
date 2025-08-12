@@ -15,6 +15,7 @@
   :omit-source true
   :source-paths ["src"]
   :target-path "target/%s"
+  :global-vars  {*warn-on-reflection* true}
   :profiles {:default
              {:main ^:skip-aot mobdap.main
               :set-version {:updates [{:path "src/mobdap/main.clj"
@@ -32,12 +33,14 @@
              :uberjar
              {:main mobdap.main
               :aot :all
-              :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}
+              :jvm-opts ["-Dclojure.compiler.direct-linking=true"]
+              :global-vars {*warn-on-reflection* false}}
 
              :native-image
              {:main mobdap.main
               :aot :all
               :jvm-opts ["-Dclojure.compiler.direct-linking=true"]
+              :global-vars {*warn-on-reflection* false}
               :native-image {:opts ["-H:ReflectionConfigurationFiles=resources/reflection.json"
                                     "--verbose"
                                     "--no-fallback"

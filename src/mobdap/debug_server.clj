@@ -8,7 +8,7 @@
    [taoensso.timbre :as log])
   (:import
    [java.io BufferedReader InputStreamReader PrintWriter]
-   [java.net ServerSocket]))
+   [java.net ServerSocket Socket]))
 
 (def ^:private response-pattern-200 #"^200 OK\s+(.+)")
 (def ^:private response-pattern-202 #"^202 Paused\s+(.+)\s+([0-9]+)\s*$")
@@ -16,8 +16,8 @@
 (def ^:private response-pattern-204 #"^204 Output (\w+) (\d+)$")
 (def ^:private response-pattern-401 #"^401 Error in Execution (\d+)\s*$")
 
-(defn- send-line! [server line]
-  (let [writer (get-in server [:client :writer])]
+(defn- send-line! [server ^String line]
+  (let [^PrintWriter writer (get-in server [:client :writer])]
     (log/debug "Debug Server -> Debuggee" line)
     (doto writer
       (.write line)
@@ -25,20 +25,21 @@
       (.flush))))
 
 (defn- read-response! [server]
-  (let [reader (get-in server [:client :reader])]
+  (let [^BufferedReader reader (get-in server [:client :reader])]
     (when-let [message (.readLine reader)]
       (log/debug "Debuggee -> Debug Server:" message)
       (string/trim message))))
 
 (defn- send-command! [server command]
-  (let [command (string/upper-case command)]
+  (let [^Socket socket (get-in server [:client :socket])
+        command (string/upper-case command)]
     (send-line! server command)
     (when (read-response! server)
       (loop []
         (let [breakpoint (read-response! server)]
           (if-not breakpoint
             (do (log/info "Program finished")
-                (.close (get-in server [:client :socket]))
+                (.close socket)
                 (System/exit 0))
             (let [[_ status] (re-find #"^(\d+)" breakpoint)
                   to-adapter (get-in server [:channels :to-adapter])]
@@ -87,7 +88,7 @@
     (lua/extract-table stack-code)
     nil))
 
-(defn- is-connected? [socket]
+(defn- is-connected? [^Socket socket]
   (and (not (.isClosed socket))
        (.isConnected socket)
        (not (.isOutputShutdown socket))))

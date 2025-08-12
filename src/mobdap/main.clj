@@ -7,8 +7,6 @@
    [taoensso.timbre.appenders.core :as appenders])
   (:gen-class))
 
-(set! *warn-on-reflection* true)
-
 (defn- cache-dir []
   (or
    (System/getenv "XDG_CACHE_HOME")

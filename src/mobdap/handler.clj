@@ -8,7 +8,8 @@
    [mobdap.adapter :as adapter]
    [mobdap.debug-server :as debug-server]
    [mobdap.utils :refer [float-to-string map-over-map to-int]]
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log])
+  (:import [java.io File]))
 
 (def ^:private go-handler (atom nil))
 
@@ -56,8 +57,8 @@
       :else
       (->> (:source-dirs handler)
            (map #(io/file % filepath))
-           (filter #(.exists %))
-           (map #(.getCanonicalPath %))
+           (filter #(.exists ^File %))
+           (map #(.getCanonicalPath ^File %))
            (first)))))
 
 (defn- find-source-relative-file [handler filepath]

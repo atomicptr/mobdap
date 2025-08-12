@@ -4,26 +4,26 @@
    [clj-stacktrace.repl :refer [pst-str]]
    [taoensso.timbre :as log])
   (:import
-   [org.luaj.vm2 LuaTable]
+   [org.luaj.vm2 Globals LuaTable LuaValue]
    [org.luaj.vm2.lib.jse JsePlatform]))
 
 (declare lua->clojure)
 
 (defn- is-array? [^LuaTable table]
-  (every? #(.isint %) (.keys table)))
+  (every? #(.isint ^LuaValue %) (.keys table)))
 
 (defn- table->array [^LuaTable table]
   (let [keys (.keys table)]
-    (vec (map #(lua->clojure (.get table %)) keys))))
+    (vec (map #(lua->clojure (.get table ^LuaValue %)) keys))))
 
 (defn- table->map [^LuaTable table]
   (let [keys (.keys table)]
     (into {}
           (for [k keys]
             [(keyword (str k))
-             (lua->clojure (.get table k))]))))
+             (lua->clojure (.get table ^LuaValue k))]))))
 
-(defn- lua->clojure [value]
+(defn- lua->clojure [^LuaValue value]
   (cond
     (nil? value) nil
 
@@ -40,10 +40,10 @@
     (instance? org.luaj.vm2.LuaFunction value)
     :function))
 
-(defn extract-table [lua-code]
+(defn extract-table [^String lua-code]
   (try
-    (let [globals (JsePlatform/standardGlobals)
-          chunk (.load globals lua-code)]
+    (let [^Globals globals (JsePlatform/standardGlobals)
+          chunk            (.load globals lua-code)]
       (-> (.call chunk)
           (lua->clojure)))
     (catch Throwable t

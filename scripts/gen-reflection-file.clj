@@ -3,13 +3,7 @@
 (require '[cheshire.core :as json])
 
 (def classes
-  ["java.io.BufferedReader"
-   "java.io.BufferedWriter"
-   "java.io.InputStreamReader"
-   "java.io.PrintWriter"
-   "java.net.ServerSocket"
-   "java.net.Socket"
-   "org.luaj.vm2.Globals"
+  ["org.luaj.vm2.Globals"
    "org.luaj.vm2.LuaBoolean"
    "org.luaj.vm2.LuaClosure"
    "org.luaj.vm2.LuaDouble"

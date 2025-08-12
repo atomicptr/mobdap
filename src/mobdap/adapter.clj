@@ -25,7 +25,7 @@
       (Integer/parseInt length))))
 
 (defn read-message! [adapter]
-  (let [reader (:reader adapter)
+  (let [^BufferedReader reader (:reader adapter)
         length (parse-content-length! reader)]
     (assert (and (some? reader) (instance? BufferedReader reader)))
     (when length
@@ -36,9 +36,9 @@
           message)))))
 
 (defn send-message! [adapter message]
-  (let [writer (:writer adapter)
-        json-str (json/generate-string message)
-        length   (count json-str)]
+  (let [^BufferedWriter writer (:writer adapter)
+        json-str               (json/generate-string message)
+        length                 (count json-str)]
     (assert (and (some? writer) (instance? BufferedWriter writer)))
     (log/debug "Adapter: Send Message:" message)
     (doto writer
