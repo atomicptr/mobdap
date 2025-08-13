@@ -83,7 +83,8 @@ jobs:
       - name: "compress unix: ${{ matrix.config.name }}"
         if: matrix.config.profile == 'unix'
         run: |
-          tar -czvf ${{ matrix.config.name }}.tar.gz target/native-image/mobdap*
+          mv target/native-image/mobdap-* mobdap
+          tar -czvf ${{ matrix.config.name }}.tar.gz mobdap
 
       - name: "upload unix: ${{ matrix.config.name }}"
         if: matrix.config.profile == 'unix'
@@ -94,7 +95,8 @@ jobs:
       - name: "compress windows: ${{ matrix.config.name }}"
         if: matrix.config.profile == 'windows'
         run: |
-          Compress-Archive -Path target/native-image/mobdap* -Destination ${{ matrix.config.name }}.zip
+          Move-Item -Path target/native-image/mobdap-*.exe -Destination mobdap.exe
+          Compress-Archive -Path mobdap.exe -Destination ${{ matrix.config.name }}.zip
 
       - name: "upload windows: ${{ matrix.config.name }}"
         if: matrix.config.profile == 'windows'
