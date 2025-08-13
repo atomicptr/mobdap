@@ -23,7 +23,7 @@
   (println)
   (println (:summary result)))
 
-(def ^:private mobdap-version "0.1.4")
+(def ^:private mobdap-version "0.1.5")
 
 (defn -main [& args]
   (let [res (parse-opts args cli-options)]

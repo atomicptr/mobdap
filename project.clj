@@ -1,4 +1,4 @@
-(defproject mobdap "0.1.4"
+(defproject mobdap "0.1.5"
   :description "Debug adapter implementation for Lua / MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
