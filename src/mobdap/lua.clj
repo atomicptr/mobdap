@@ -50,3 +50,10 @@
       (log/error "Lua Bridge:" (pst-str (parse-exception t)))
       [])))
 
+(defn expression? [^String lua-code]
+  (let [^Globals globals (JsePlatform/standardGlobals)
+        lua-code         (format "return %s" lua-code)]
+    (try
+      (.load globals lua-code)
+      true
+      (catch Throwable _ false))))

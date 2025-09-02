@@ -294,8 +294,20 @@
                       stack (transform-stack-trace handler stack)]
                   (log/debug "Stacktrace:" stack)
                   (reset! (:stackframes handler) stack)
-                  (adapter/send-message! (:adapter handler) (success seq "stackTrace" {:stackFrames (map #(dissoc % :extras) stack)
-                                                                                       :totalFrames (count stack)})))
+                  (adapter/send-message!
+                   (:adapter handler)
+                   (success seq "stackTrace" {:stackFrames (map #(dissoc % :extras) stack)
+                                              :totalFrames (count stack)})))
+
+    :eval       (let [res (:result command)
+                      seq (:seq    command)]
+                  (log/debug "Eval Result:" res)
+                  (when res ; only send response when we actually got something to send
+                    (adapter/send-message!
+                     (:adapter handler)
+                     (success seq "evaluate" {:result res
+                                              ; TODO: check if this is a variablesReference
+                                              :variablesReference 0}))))
 
     (log/error "Unknown server command:" (:cmd command))))
 
@@ -566,6 +578,12 @@
   (adapter/send-message! (:adapter handler) (success (:seq message) "next" nil))
   handler)
 
+(defn handle-evaluate [handler message]
+  (let [expression (get-in message [:arguments :expression])]
+    (log/debug "Eval:" expression)
+    (send-command-to-debug-server handler {:cmd :eval :expression expression :seq (:seq message)} false)
+    handler))
+
 (defn handle-terminate [handler message]
   (send-command-to-debug-server handler {:cmd :exit})
   (adapter/send-message! (:adapter handler) (success (:seq message) "terminate" nil))
@@ -589,6 +607,7 @@
     "stepIn"            (handle-step-in handler message)
     "stepOut"           (handle-step-out handler message)
     "next"              (handle-next handler message)
+    "evaluate"          (handle-evaluate handler message)
     "disconnect"        (handle-terminate handler message)
     "terminate"         (handle-terminate handler message)
 

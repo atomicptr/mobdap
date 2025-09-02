@@ -14,7 +14,7 @@
 (def ^:private response-pattern-202 #"^202 Paused\s+(.+)\s+([0-9]+)\s*$")
 (def ^:private response-pattern-203 #"^203 Paused\s+(.+)\s+([0-9]+)\s+([0-9]+)\s*$")
 (def ^:private response-pattern-204 #"^204 Output (\w+) (\d+)$")
-(def ^:private response-pattern-401 #"^401 Error in Execution (\d+)\s*$")
+(def ^:private response-pattern-401 #"^401 Error in (\w+) (\d+)\s*$")
 
 (defn- send-line! [server ^String line]
   (let [^PrintWriter writer (get-in server [:client :writer])]
@@ -30,7 +30,16 @@
       (log/debug "Debuggee -> Debug Server:" message)
       (string/trim message))))
 
-(defn- send-command! [server command]
+(defn- read-response-with-length! [server len]
+  (let [^BufferedReader reader (get-in server [:client :reader])
+        len                    (Integer/parseInt len)
+        buffer                 (char-array len)]
+    (.read reader buffer 0 len)
+    (let [res (String/new buffer)]
+      (log/debug (format "Debuggee -> Debug Server (%s): %s" len res))
+      res)))
+
+(defn- send-blocking-command! [server command]
   (let [^Socket socket (get-in server [:client :socket])
         command (string/upper-case command)]
     (send-line! server command)
@@ -61,16 +70,16 @@
                         (do (log/info "Paused at file:" file "line:" line "( watch expression:" watch-index ")")
                             nil)
                         (recur))
-                "204" (if-let [[_ text size] (re-find response-pattern-204 breakpoint)]
-                        (let [size (parse-long size)
-                              message (if (pos? size) (read-response! server) "")]
+                "204" (if-let [[_ text len] (re-find response-pattern-204 breakpoint)]
+                        (let [size (parse-long len)
+                              message (if (pos? size) (read-response-with-length! server size) "")]
                           (log/debug "OUT1:" text)
                           (log/debug "OUT2:" message)
                           (recur))
                         (recur))
-                "401" (if-let [[_ _size] (re-find response-pattern-401 breakpoint)]
-                        (let [message (read-response! server)]
-                          (log/error "Error in remote application:" message)
+                "401" (if-let [[_ error-type size] (re-find response-pattern-401 breakpoint)]
+                        (let [message (read-response-with-length! server size)]
+                          (log/error "Error in remote application:" error-type message)
                           nil)
                         (recur))
                 (do (log/error "Unknown Error:" breakpoint)
@@ -87,6 +96,42 @@
   (if-let [[_ stack-code] (re-find response-pattern-200 (read-response! server))]
     (lua/extract-table stack-code)
     nil))
+
+(defn- convert-to-safe-whitespace [s]
+  (string/replace s #"\r?\n" "\012"))
+
+(defn- send-eval-command! [server expression]
+  (try
+    (send-line!
+     server
+     (format
+      (if (lua/expression? expression)
+        "EXEC return %s"
+        "EXEC %s")
+      (convert-to-safe-whitespace expression)))
+    (let [res        (read-response! server)
+          [_ status] (re-find #"^(\d+)" res)]
+      (case status
+        "200" (when-let [[_ len] (re-find response-pattern-200 res)]
+                (let [res (read-response-with-length! server len)]
+                  (first (lua/extract-table res))))
+
+        "204" (when-let [[_ text len] (re-find response-pattern-204 res)]
+                (let [size (parse-long len)
+                      message (if (pos? size) (read-response-with-length! server size) "")]
+                  (log/debug "OUT1:" text)
+                  (log/debug "OUT2:" message)
+                  nil))
+
+        "401" (when-let [[_ error-type len] (re-find response-pattern-401 res)]
+                (let [res (read-response-with-length! server len)]
+                  (log/error (format "Eval Error in %s: %s" error-type res))
+                  res))
+
+        (do (log/error "Unknown Error:" res)
+            nil)))
+    (catch Throwable t
+      (log/error "Eval: Something went wrong:" (pr-str (parse-exception t))))))
 
 (defn- is-connected? [^Socket socket]
   (and (not (.isClosed socket))
@@ -111,14 +156,14 @@
                                           :to-debug-server to-debug-server}}]
 
             ; send step command
-            (send-command! server-handle "step")
+            (send-blocking-command! server-handle "step")
             (>!! to-adapter {:cmd :setup-done})
 
             (go-loop []
               (when-let [command (<!! to-debug-server)]
                 (log/debug "Handler -> Debug Server:" command)
                 (case (:cmd command)
-                  :run             (go (send-command! server-handle "run"))
+                  :run             (go (send-blocking-command! server-handle "run"))
 
                   :set-breakpoints (do
                                      ; this command only gets called before executing a command so we
@@ -129,17 +174,20 @@
                                              {:keys [line]} breakpoints]
                                        (send-command-setb! server-handle filename line)))
 
-                  :step-in         (go (send-command! server-handle "step"))
+                  :step-in         (go (send-blocking-command! server-handle "step"))
 
-                  :step-out        (go (send-command! server-handle "out"))
+                  :step-out        (go (send-blocking-command! server-handle "out"))
 
-                  :over            (go (send-command! server-handle "over"))
+                  :over            (go (send-blocking-command! server-handle "over"))
 
                   :stacktrace      (let [stack (send-command-stack! server-handle)]
                                      (>!! to-adapter {:cmd :stacktrace :stack stack :seq (:seq command)}))
 
+                  :eval            (let [result (send-eval-command! server-handle (:expression command))]
+                                     (>!! to-adapter {:cmd :eval :result result :seq (:seq command)}))
+
                   :exit            (do
-                                     (send-command! server-handle "exit")
+                                     (send-blocking-command! server-handle "exit")
                                      (.close client)
                                      (System/exit 0))
 
