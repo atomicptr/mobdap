@@ -2,7 +2,7 @@
   :description "Debug adapter implementation for Lua / MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
-  :dependencies [[cheshire/cheshire                 "6.0.0"]
+  :dependencies [[cheshire/cheshire                 "6.1.0"]
                  [org.clojure/tools.cli             "1.1.230"]
                  [clj-stacktrace                    "0.2.8"]
                  [com.taoensso/timbre               "6.8.0"]
@@ -26,7 +26,7 @@
              :dev
              {:main ^:skip-aot mobdap.dev
               :source-paths ["src" "dev"]
-              :dependencies [[nrepl/nrepl "1.3.1"]]}
+              :dependencies [[nrepl/nrepl "1.4.0"]]}
 
              :test
              {:dependencies [[nubank/matcher-combinators "3.9.2"]]}
