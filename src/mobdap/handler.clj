@@ -165,7 +165,7 @@
      :name name
      :type :table
      :addr nil
-     :value (vec (map (partial parse-inner-value handler nil) value))}
+     :value (mapv (partial parse-inner-value handler nil) value)}
 
     (map?    value)
     {:id (swap! (get-in handler [:counter :vars]) inc)
@@ -276,7 +276,7 @@
                                {:reason "breakpoint"
                                 :allThreadsStopped true
                                 :threadId 1
-                                :hitBreakpointIds (vec (filter some? [id]))})))
+                                :hitBreakpointIds (filterv some? [id])})))
 
                (:step :out :over)
                (adapter/send-message!
@@ -399,7 +399,7 @@
      (:adapter handler)
      (success (:seq message)
               "scopes"
-              {:scopes (vec (filter some? [stack-scope upvals-scope]))}))
+              {:scopes (filterv some? [stack-scope upvals-scope])}))
     handler))
 
 (defn- find-vars-scope-by-id [data id]
@@ -546,10 +546,10 @@
     (assert (and (some? vars) (some? type)))
 
     (let [variables
-          (vec (filter some? (case type
-                               :scope (create-scope-variables vars)
-                               :vars  (create-variables vars)
-                               :else  [])))]
+          (filterv some? (case type
+                           :scope (create-scope-variables vars)
+                           :vars  (create-variables vars)
+                           :else  []))]
 
       (adapter/send-message!
        (:adapter handler)

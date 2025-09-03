@@ -14,7 +14,7 @@
 
 (defn- table->array [^LuaTable table]
   (let [keys (.keys table)]
-    (vec (map #(lua->clojure (.get table ^LuaValue %)) keys))))
+    (mapv #(lua->clojure (.get table ^LuaValue %)) keys)))
 
 (defn- table->map [^LuaTable table]
   (let [keys (.keys table)]
