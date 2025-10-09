@@ -1,12 +1,12 @@
-(defproject mobdap "0.2.0"
+(defproject mobdap "0.2.1"
   :description "Debug adapter implementation for Lua / MobDap"
   :url "https://github.com/atomicptr/mobdap"
   :license {:name "GPL-3.0-or-later" :url "https://www.gnu.org/licenses/gpl-3.0.en.html"}
   :dependencies [[cheshire/cheshire                 "6.1.0"]
-                 [org.clojure/tools.cli             "1.1.230"]
+                 [org.clojure/tools.cli             "1.2.245"]
                  [clj-stacktrace                    "0.2.8"]
                  [com.taoensso/timbre               "6.8.0"]
-                 [org.clojure/clojure               "1.12.2"]
+                 [org.clojure/clojure               "1.12.3"]
                  [org.clojure/core.async            "1.8.741"]
                  [org.luaj/luaj-jse                 "3.0.1"]]
   :plugins      [[io.taylorwood/lein-native-image   "0.3.1"]
